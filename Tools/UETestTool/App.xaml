@@ -1,0 +1,8 @@
+﻿<Application x:Class="UETestTool.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ThemeMode="System"
+             StartupUri="MainWindow.xaml">
+    <!-- ThemeMode="System": WPF's built-in Fluent theme, following Windows light/dark mode and accent colour. -->
+    <Application.Resources />
+</Application>

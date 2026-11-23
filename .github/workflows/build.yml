@@ -1,0 +1,41 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: write   # needed to create a release on tag pushes
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test
+        run: dotnet test Tests/Drs.Unreal.Common.Tests -c Release
+
+      - name: Publish UETestTool.exe
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_type }}' -eq 'tag' ? '${{ github.ref_name }}'.TrimStart('v') : '0.0.0-ci'
+          dotnet publish Tools/UETestTool -c Release -o publish/UETestTool -p:Version=$version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UETestTool
+          path: publish/UETestTool/UETestTool.exe
+
+      - name: Create GitHub release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create '${{ github.ref_name }}' publish/UETestTool/UETestTool.exe --title "UE Test Tool ${{ github.ref_name }}" --generate-notes

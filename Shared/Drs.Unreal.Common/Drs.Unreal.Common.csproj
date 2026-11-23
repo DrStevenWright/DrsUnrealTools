@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Engine, project and map discovery shared by DRS Unreal tools. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>Drs.Unreal.Common</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Drs.Unreal.Common.Tests" />
+  </ItemGroup>
+
+</Project>

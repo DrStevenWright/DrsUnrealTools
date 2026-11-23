@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Company>DRS</Company>
+    <Product>DRS Unreal Tools</Product>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+  <!-- Keep published output to the single exe (no .pdb files from referenced projects). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+</Project>

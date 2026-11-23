@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/Shared/">
+    <Project Path="Shared/Drs.Unreal.Common/Drs.Unreal.Common.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="Tests/Drs.Unreal.Common.Tests/Drs.Unreal.Common.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Tools/">
+    <Project Path="Tools/UETestTool/UETestTool.csproj" />
+  </Folder>
+</Solution>

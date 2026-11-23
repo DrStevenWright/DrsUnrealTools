@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>UETestTool</AssemblyName>
+    <RootNamespace>UETestTool</RootNamespace>
+    <Product>UE Test Tool</Product>
+    <AssemblyTitle>UE Test Tool</AssemblyTitle>
+    <ApplicationIcon>Assets\UETestTool.ico</ApplicationIcon>
+    <!-- Size: only English resources from dependencies.
+         Note: InvariantGlobalization must NOT be enabled: WPF needs culture data and crashes at startup
+         ("Cannot find non-neutral culture related to 'en-us'"). -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!-- `dotnet publish -c Release` produces one self-contained UETestTool.exe (no .NET install needed). -->
+  <PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\UETestTool.ico" />
+    <None Include="Assets\IconSource\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\Drs.Unreal.Common\Drs.Unreal.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,277 @@
+﻿<Window x:Class="UETestTool.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:UETestTool"
+        xmlns:vm="clr-namespace:UETestTool.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+        Title="UE Test Tool"
+        Icon="Assets/UETestTool.ico"
+        Width="980" Height="660" MinWidth="720" MinHeight="480"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <local:NotEmptyToVisibilityConverter x:Key="NotEmptyToVisibility" />
+        <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+        <!-- Right-click menu for project list items. Defined here (not inside the item style) because WPF can't
+             wire event handlers declared inside a Setter value. -->
+        <ContextMenu x:Key="ProjectContextMenu" x:Shared="False">
+            <MenuItem Header="Remove from list" Click="RemoveProject_Click" />
+        </ContextMenu>
+
+        <Style x:Key="LabelText" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+        </Style>
+        <Style x:Key="DimText" TargetType="TextBlock">
+            <Setter Property="Opacity" Value="0.65" />
+        </Style>
+        <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="7,5" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20,16,20,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />   <!-- project -->
+            <RowDefinition Height="Auto" />   <!-- engine -->
+            <RowDefinition Height="Auto" />   <!-- engine warning -->
+            <RowDefinition Height="Auto" />   <!-- map -->
+            <RowDefinition Height="Auto" />   <!-- configs header -->
+            <RowDefinition Height="*" />      <!-- configs -->
+            <RowDefinition Height="Auto" />   <!-- config warnings -->
+            <RowDefinition Height="Auto" />   <!-- new config -->
+            <RowDefinition Height="Auto" />   <!-- launch bar -->
+            <RowDefinition Height="Auto" />   <!-- command preview -->
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Project -->
+        <TextBlock Grid.Row="0" Text="Project" Style="{StaticResource LabelText}" />
+        <ComboBox Grid.Row="0" Grid.Column="1" x:Name="ProjectBox" Margin="0,0,8,0"
+                  ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"
+                  ToolTip="Projects found from Unreal's recent-project lists and your search folders. Right-click a project in the list to remove it.">
+            <ComboBox.ItemContainerStyle>
+                <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+                    <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
+                    <Setter Property="ToolTip" Value="{Binding Path}" />
+                    <Setter Property="ContextMenu" Value="{StaticResource ProjectContextMenu}" />
+                </Style>
+            </ComboBox.ItemContainerStyle>
+            <ComboBox.ItemTemplate>
+                <DataTemplate DataType="vm:ProjectItem">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Detail}" Style="{StaticResource DimText}" Margin="10,0,0,0" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
+        <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal">
+            <Button Content="Browse…" Command="{Binding BrowseCommand}" Margin="0,0,8,0"
+                    ToolTip="Add a .uproject file that wasn't found automatically." />
+            <Button Command="{Binding RefreshCommand}" AutomationProperties.Name="Refresh" ToolTip="Search again for engines, projects and maps, and re-read the project's config files.">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock Text="Refresh" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <!-- Engine -->
+        <TextBlock Grid.Row="1" Text="Engine" Style="{StaticResource LabelText}" Margin="0,10,12,0" />
+        <ComboBox Grid.Row="1" Grid.Column="1" Margin="0,10,8,0"
+                  ItemsSource="{Binding Engines}" SelectedItem="{Binding SelectedEngine}">
+            <ComboBox.ItemContainerStyle>
+                <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+                    <Setter Property="ToolTip" Value="{Binding EditorExe}" />
+                </Style>
+            </ComboBox.ItemContainerStyle>
+            <ComboBox.ToolTip>
+                <TextBlock Text="{Binding SelectedEngine.EditorExe, FallbackValue='No engine selected'}" />
+            </ComboBox.ToolTip>
+        </ComboBox>
+
+        <!-- Engine mismatch warning -->
+        <Border Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,8,0,0" Padding="12,6" CornerRadius="4"
+                Background="#33D9A400" BorderBrush="#88D9A400" BorderThickness="1"
+                Visibility="{Binding EngineWarning, Converter={StaticResource NotEmptyToVisibility}}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Switch" Command="{Binding SwitchEngineCommand}" Padding="12,2"
+                        Visibility="{Binding SuggestedEngine, Converter={StaticResource NotEmptyToVisibility}}" />
+                <TextBlock VerticalAlignment="Center" TextWrapping="Wrap">
+                    <Run Text="&#xE7BA;" FontFamily="{StaticResource IconFont}" />
+                    <Run Text=" " /><Run Text="{Binding EngineWarning, Mode=OneWay}" />
+                </TextBlock>
+            </DockPanel>
+        </Border>
+
+        <!-- Map -->
+        <TextBlock Grid.Row="3" Text="Map" Style="{StaticResource LabelText}" Margin="0,10,12,0" />
+        <ComboBox Grid.Row="3" Grid.Column="1" Margin="0,10,8,0"
+                  ItemsSource="{Binding Maps}" SelectedItem="{Binding SelectedMap}" IsEnabled="{Binding IsMapEnabled}"
+                  IsTextSearchEnabled="True" TextSearch.TextPath="Name"
+                  ToolTip="With the list focused, type the start of a map's name to jump to it.">
+            <ComboBox.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding PackagePath}" />
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
+        <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding MapHint}" Style="{StaticResource DimText}"
+                   VerticalAlignment="Center" Margin="0,10,0,0" TextWrapping="Wrap" MaxWidth="220" />
+
+        <!-- Configurations -->
+        <Grid Grid.Row="4" Grid.ColumnSpan="3" Margin="0,20,0,6" x:Name="ConfigHeader">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="36" />
+                <ColumnDefinition Width="200" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="72" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="1" Text="Configuration" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="2" Text="Arguments" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="3" Text="Your extra arguments" FontWeight="SemiBold" Margin="8,0,0,0"
+                       ToolTip="Added after the configuration's arguments. Saved per configuration, just for you, in the project's Saved folder." />
+        </Grid>
+
+        <ListBox Grid.Row="5" Grid.ColumnSpan="3" ItemsSource="{Binding Configs}" SelectedItem="{Binding SelectedConfig}"
+                 HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 MouseDoubleClick="Configs_MouseDoubleClick" PreviewGotKeyboardFocus="Configs_PreviewGotKeyboardFocus">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                    <Setter Property="Padding" Value="0,2" />
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:ConfigItem">
+                    <Grid ToolTip="{Binding RuleDescription}" Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="36" />
+                            <ColumnDefinition Width="200" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="72" />
+                        </Grid.ColumnDefinitions>
+                        <RadioButton Grid.Column="0" IsHitTestVisible="False" Focusable="False" MinWidth="0" Margin="8,0,0,0"
+                                     VerticalAlignment="Center"
+                                     IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="2" Text="{Binding Args}" VerticalAlignment="Center" Style="{StaticResource DimText}"
+                                   TextTrimming="CharacterEllipsis" FontFamily="Cascadia Mono, Consolas" FontSize="12" />
+                        <TextBox Grid.Column="3" Text="{Binding CustomArgs, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0"
+                                 FontFamily="Cascadia Mono, Consolas" FontSize="12" VerticalContentAlignment="Center" />
+                        <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Style="{StaticResource IconButton}" Content="&#xE70F;"
+                                    ToolTip="Edit (or copy) this configuration in the row below"
+                                    Command="{Binding DataContext.EditConfigCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                    CommandParameter="{Binding}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE74D;"
+                                    ToolTip="Delete from Config/UETestTool.ini"
+                                    Visibility="{Binding IsProjectDefined, Converter={StaticResource BoolToVisibility}}"
+                                    Command="{Binding DataContext.DeleteConfigCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                    CommandParameter="{Binding}" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <TextBlock Grid.Row="6" Grid.ColumnSpan="3" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="#E0A000"
+                   Text="{Binding ConfigWarnings}"
+                   Visibility="{Binding ConfigWarnings, Converter={StaticResource NotEmptyToVisibility}}" />
+
+        <!-- New / edit configuration -->
+        <Grid Grid.Row="7" Grid.ColumnSpan="3" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="200" />
+                <ColumnDefinition Width="170" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="New" Style="{StaticResource LabelText}"
+                       ToolTip="Create a configuration from a template, or edit one with its ✎ button. Saved to the project's Config/UETestTool.ini, shared with everyone using the project." />
+            <TextBox Grid.Column="1" Text="{Binding NewConfigName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                     ToolTip="Name for the configuration" x:Name="NewNameBox" />
+            <!-- Placeholder text for the name box -->
+            <TextBlock Grid.Column="1" Text="Name" IsHitTestVisible="False" Margin="12,0,0,0" VerticalAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource DimText}">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Text, ElementName=NewNameBox}" Value="">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+            <ComboBox Grid.Column="2" ItemsSource="{Binding Configs}" SelectedItem="{Binding NewConfigTemplate}" Margin="0,0,8,0"
+                      DisplayMemberPath="Name" ToolTip="Template: the new configuration launches the same way (map, ?listen, connect) and starts with its arguments" />
+            <TextBox Grid.Column="3" Text="{Binding NewConfigArgs, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                     FontFamily="Cascadia Mono, Consolas" FontSize="12" VerticalContentAlignment="Center"
+                     ToolTip="Arguments for the new configuration (prefilled from the template)" />
+            <StackPanel Grid.Column="4" Orientation="Horizontal">
+                <Button Content="{Binding SaveConfigButtonText}" Command="{Binding SaveConfigCommand}" MinWidth="64" />
+                <Button Style="{StaticResource IconButton}" Content="&#xE8A7;" Margin="4,0,0,0"
+                        ToolTip="Open Config/UETestTool.ini" Command="{Binding OpenConfigFileCommand}" />
+            </StackPanel>
+            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" Margin="0,4,0,0" Foreground="#E05050" TextWrapping="Wrap"
+                       Text="{Binding NewConfigError}"
+                       Visibility="{Binding NewConfigError, Converter={StaticResource NotEmptyToVisibility}}" />
+        </Grid>
+
+        <!-- Status + launch -->
+        <DockPanel Grid.Row="8" Grid.ColumnSpan="3" Margin="0,16,0,0" LastChildFill="True">
+            <Button DockPanel.Dock="Right" Command="{Binding LaunchCommand}" Padding="22,8" FontSize="15"
+                    AutomationProperties.Name="Launch"
+                    Style="{DynamicResource AccentButtonStyle}" IsDefault="False">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Text="Launch" />
+                </StackPanel>
+            </Button>
+            <ToggleButton DockPanel.Dock="Right" Content="Show command" IsChecked="{Binding ShowCommand}" Margin="0,0,12,0"
+                          VerticalAlignment="Center" ToolTip="Show the full command line, including the injected project and map" />
+            <ProgressBar DockPanel.Dock="Left" IsIndeterminate="True" Width="80" Height="4" Margin="0,0,12,0"
+                         VerticalAlignment="Center" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+            <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding StatusText}">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource DimText}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding StatusIsError}" Value="True">
+                                <Setter Property="Foreground" Value="#E05050" />
+                                <Setter Property="Opacity" Value="1" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </DockPanel>
+
+        <TextBox Grid.Row="9" Grid.ColumnSpan="3" Margin="0,10,0,0" IsReadOnly="True" TextWrapping="Wrap"
+                 FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                 Text="{Binding CommandPreview, Mode=OneWay}"
+                 Visibility="{Binding ShowCommand, Converter={StaticResource BoolToVisibility}}" />
+    </Grid>
+</Window>
