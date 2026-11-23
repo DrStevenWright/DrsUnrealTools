@@ -5,7 +5,19 @@ namespace Drs.Unreal.Common.Tests;
 
 public class ProjectCacheTests
 {
-    private static DiscoveredProject D(string path, ProjectSource s = ProjectSource.Recent) => new(path, s);
+    private static DiscoveredProject D(string path, ProjectSource s = ProjectSource.SearchFolder) => new(path, s);
+
+    [Fact]
+    public void Prune_DropsDiscoveredProjectsOutsideSearchFolders_KeepsBrowsed()
+    {
+        var cache = new ProjectCache();
+        cache.Merge([D(@"D:\Repos\A\A.uproject"), D(@"D:\Old\B\B.uproject"), D(@"D:\C\C.uproject", ProjectSource.Recent)]);
+        cache.AddBrowsed(@"E:\Mine\M.uproject");
+
+        Assert.Equal(2, cache.Prune([@"D:\Repos\", @"D:\Unreal Projects"]));
+        Assert.Equal([@"D:\Repos\A\A.uproject", @"E:\Mine\M.uproject"], cache.Projects.Select(p => p.Path));
+        Assert.Equal(1, cache.Prune([]));   // no folders: only browsed projects stay
+    }
 
     [Fact]
     public void Merge_OnlyAdds_NeverRemoves()

@@ -5,8 +5,21 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Company>DRS</Company>
     <Product>DRS Unreal Tools</Product>
-    <Version>0.1.0</Version>
   </PropertyGroup>
+
+  <!--
+    The version comes from git tags (MinVer), so there's one source of truth: tag v0.3.0 builds as 0.3.0.
+    Commits after a tag build as a pre-release of the next patch, e.g. 0.3.1-alpha.0.2 (2 commits after v0.3.0).
+    MinVer is build-time only: nothing is added to the published exe. It needs the git history, so CI
+    checks out with fetch-depth 0.
+  -->
+  <PropertyGroup>
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MinVer" Version="6.0.0" PrivateAssets="all" />
+  </ItemGroup>
+
   <!-- Keep published output to the single exe (no .pdb files from referenced projects). -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>none</DebugType>

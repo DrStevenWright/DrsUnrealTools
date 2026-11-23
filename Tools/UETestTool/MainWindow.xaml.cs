@@ -18,6 +18,7 @@ public partial class MainWindow : Window, IUserDialogs
     public MainWindow()
     {
         InitializeComponent();
+        if (AppInfo.Version.Length > 0) Title = $"{Title} {AppInfo.Version}";
         _settings = AppSettings.Load();
         _vm = new MainViewModel(_settings, this);
         DataContext = _vm;
@@ -52,9 +53,9 @@ public partial class MainWindow : Window, IUserDialogs
         return dialog.ShowDialog(this) == true ? dialog.FileName : null;
     }
 
-    public IReadOnlyList<string>? EditSearchFolders(IReadOnlyList<string> folders, IReadOnlyList<string> unrealFolders)
+    public IReadOnlyList<string>? EditSearchFolders(IReadOnlyList<string> folders)
     {
-        var dialog = new SearchFoldersWindow(folders, unrealFolders) { Owner = this };
+        var dialog = new SearchFoldersWindow(folders) { Owner = this };
         return dialog.ShowDialog() == true ? dialog.Folders.ToList() : null;
     }
 

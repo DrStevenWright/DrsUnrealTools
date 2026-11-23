@@ -8,9 +8,9 @@ It follows the Windows light/dark mode and accent colour. It doesn't need to liv
 
 ## Using it
 
-1. **Project**: pick any Unreal project on your machine. The list is built from Unreal's own recent-project lists and the folders Unreal creates projects in. Use **Browse…** for anything not found automatically.
-   - **Folders…** adds your own folders to search, e.g. your repos folder. Projects in them and up to two levels below are found on every search.
-   - Projects stay in the list even after Unreal forgets them (e.g. after an engine upgrade).
+1. **Project**: pick one of your Unreal projects. Use **Folders…** to choose where the tool looks, e.g. your repos folder and your Unreal Projects folder. Projects in those folders, and up to three levels below them, are found on every search. Until you add a folder, the tool shows an error and finds nothing.
+   - Use **Browse…** to add a project from anywhere else.
+   - Removing a folder removes its projects from the list. Projects added with Browse… stay.
    - Right-click a project to remove it from the list.
    - Projects on a disconnected drive are greyed out until it's back.
 2. **Engine**: every installed engine, both launcher installs and registered source builds. Engines are compared by release (e.g. 5.8), so a project made with a 5.8 source build is fine on the 5.8 launcher install, and vice versa. If the selected engine is a different release, a warning appears, with a **Switch** button when an engine of the project's release is installed.

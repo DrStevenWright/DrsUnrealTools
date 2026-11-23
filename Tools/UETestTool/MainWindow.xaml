@@ -63,7 +63,7 @@
         <TextBlock Grid.Row="0" Text="Project" Style="{StaticResource LabelText}" />
         <ComboBox Grid.Row="0" Grid.Column="1" x:Name="ProjectBox" Margin="0,0,8,0"
                   ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"
-                  ToolTip="Projects found from Unreal's recent-project lists and your search folders (Folders…). Right-click a project in the list to remove it.">
+                  ToolTip="Projects found in your search folders (Folders…) and added with Browse…. Right-click a project in the list to remove it.">
             <ComboBox.ItemContainerStyle>
                 <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
                     <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />

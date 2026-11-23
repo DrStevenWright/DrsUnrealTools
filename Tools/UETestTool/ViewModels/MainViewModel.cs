@@ -117,8 +117,9 @@ public sealed partial class MainViewModel : ObservableObject
         var cache = _settings.ProjectCache;
         var added = cache.Merge(result.discovered);
         var countBefore = cache.Projects.Count;
+        var outsideFolders = cache.Prune(searchFolders);
         var availabilityOfKept = cache.Validate(p => result.availability.GetValueOrDefault(p, ProjectAvailability.Unavailable));
-        var removed = countBefore - cache.Projects.Count;
+        var removed = countBefore - cache.Projects.Count - outsideFolders;
 
         _loading = true;
         try
@@ -154,7 +155,11 @@ public sealed partial class MainViewModel : ObservableObject
         var summary = $"{Engines.Count} engine(s), {Projects.Count} project(s)";
         if (added > 0) summary += $", {added} new";
         if (removed > 0) summary += $", {removed} removed (no longer on disk)";
-        SetStatus(Engines.Count == 0 ? "No Unreal Engine installations found." : summary + ".", isError: Engines.Count == 0);
+        if (outsideFolders > 0) summary += $", {outsideFolders} removed (not in a search folder)";
+        if (Engines.Count == 0) SetStatus("No Unreal Engine installations found.", isError: true);
+        else if (_settings.SearchFolders.Count == 0)
+            SetStatus("No search folders: click Folders… to choose where to look for projects.", isError: true);
+        else SetStatus(summary + ".");
 
         if (_refreshPending)
         {
@@ -166,10 +171,7 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task EditSearchFolders()
     {
-        var unrealFolders = ProjectDiscovery.ReadAllEditorSettings(ProjectDiscovery.UnrealLocalAppData).CreatedProjectPaths
-            .Select(p => { try { return PathUtil.Normalize(p); } catch (Exception) { return p; } })
-            .Distinct(PathUtil.Comparer).ToList();
-        var edited = _dialogs.EditSearchFolders(_settings.SearchFolders, unrealFolders);
+        var edited = _dialogs.EditSearchFolders(_settings.SearchFolders);
         if (edited is null || edited.SequenceEqual(_settings.SearchFolders, PathUtil.Comparer)) return;
 
         _settings.SearchFolders = edited.Distinct(PathUtil.Comparer).ToList();
