@@ -52,6 +52,12 @@ public partial class MainWindow : Window, IUserDialogs
         return dialog.ShowDialog(this) == true ? dialog.FileName : null;
     }
 
+    public IReadOnlyList<string>? EditSearchFolders(IReadOnlyList<string> folders, IReadOnlyList<string> unrealFolders)
+    {
+        var dialog = new SearchFoldersWindow(folders, unrealFolders) { Owner = this };
+        return dialog.ShowDialog() == true ? dialog.Folders.ToList() : null;
+    }
+
     // ---- Event handlers -----------------------------------------------------------------------------
 
     private void RemoveProject_Click(object sender, RoutedEventArgs e)

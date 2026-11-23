@@ -63,7 +63,7 @@
         <TextBlock Grid.Row="0" Text="Project" Style="{StaticResource LabelText}" />
         <ComboBox Grid.Row="0" Grid.Column="1" x:Name="ProjectBox" Margin="0,0,8,0"
                   ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"
-                  ToolTip="Projects found from Unreal's recent-project lists and your search folders. Right-click a project in the list to remove it.">
+                  ToolTip="Projects found from Unreal's recent-project lists and your search folders (Folders…). Right-click a project in the list to remove it.">
             <ComboBox.ItemContainerStyle>
                 <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
                     <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
@@ -83,6 +83,8 @@
         <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal">
             <Button Content="Browse…" Command="{Binding BrowseCommand}" Margin="0,0,8,0"
                     ToolTip="Add a .uproject file that wasn't found automatically." />
+            <Button Content="Folders…" Command="{Binding EditSearchFoldersCommand}" Margin="0,0,8,0" AutomationProperties.Name="Folders"
+                    ToolTip="Choose folders to search for projects, e.g. your repos folder." />
             <Button Command="{Binding RefreshCommand}" AutomationProperties.Name="Refresh" ToolTip="Search again for engines, projects and maps, and re-read the project's config files.">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,6,0" />

@@ -36,4 +36,10 @@ public sealed record EngineInstall(
 public sealed record EngineVersion(int Major, int Minor, int Patch)
 {
     public override string ToString() => $"{Major}.{Minor}.{Patch}";
+
+    /// <summary>"5.8": the part that matters for compatibility.</summary>
+    public string Release => $"{Major}.{Minor}";
+
+    /// <summary>Same major.minor; patch releases are compatible with each other.</summary>
+    public bool SameRelease(EngineVersion other) => Major == other.Major && Minor == other.Minor;
 }

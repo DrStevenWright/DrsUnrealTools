@@ -84,12 +84,20 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private Task Refresh() => RefreshAsync(SelectedProject?.Path ?? _settings.LastProject);
 
+    /// <summary>Set when a refresh is asked for while one is running (e.g. search folders changed); it runs again afterwards.</summary>
+    private bool _refreshPending;
+
     private async Task RefreshAsync(string? selectPath)
     {
-        if (IsBusy) return;
+        if (IsBusy)
+        {
+            _refreshPending = true;
+            return;
+        }
         IsBusy = true;
         SetStatus("Searching for engines and projects…");
         FlushUserState();
+        _logVersions.Clear();
 
         var cachedPaths = _settings.ProjectCache.Projects.Select(p => p.Path).ToList();
         var searchFolders = _settings.SearchFolders.ToList();
@@ -147,6 +155,26 @@ public sealed partial class MainViewModel : ObservableObject
         if (added > 0) summary += $", {added} new";
         if (removed > 0) summary += $", {removed} removed (no longer on disk)";
         SetStatus(Engines.Count == 0 ? "No Unreal Engine installations found." : summary + ".", isError: Engines.Count == 0);
+
+        if (_refreshPending)
+        {
+            _refreshPending = false;
+            await RefreshAsync(SelectedProject?.Path ?? _settings.LastProject);
+        }
+    }
+
+    [RelayCommand]
+    private async Task EditSearchFolders()
+    {
+        var unrealFolders = ProjectDiscovery.ReadAllEditorSettings(ProjectDiscovery.UnrealLocalAppData).CreatedProjectPaths
+            .Select(p => { try { return PathUtil.Normalize(p); } catch (Exception) { return p; } })
+            .Distinct(PathUtil.Comparer).ToList();
+        var edited = _dialogs.EditSearchFolders(_settings.SearchFolders, unrealFolders);
+        if (edited is null || edited.SequenceEqual(_settings.SearchFolders, PathUtil.Comparer)) return;
+
+        _settings.SearchFolders = edited.Distinct(PathUtil.Comparer).ToList();
+        _settings.Save();
+        await RefreshAsync(SelectedProject?.Path ?? _settings.LastProject);
     }
 
     private void SortProjects()
@@ -228,10 +256,10 @@ public sealed partial class MainViewModel : ObservableObject
             _configFile = ProjectConfigFile.Load(ProjectFiles.SharedConfig(project.Directory));
             ReloadConfigs(_userState.LastConfig);
 
-            // Engine: the one last used with this project, else the project's own association, else the last one used anywhere.
-            var associated = EngineDiscovery.ResolveAssociation(project.File.EngineAssociation, project.Path, Engines);
+            // Engine: the one last used with this project, else the project's own association (or an installed engine
+            // of the same release), else the last one used anywhere.
             SelectedEngine = Engines.FirstOrDefault(e => e.Identifier == _userState.LastEngine)
-                             ?? associated
+                             ?? ProjectEngine.Preferred(IdentifyEngine(project), Engines)
                              ?? Engines.FirstOrDefault(e => e.Identifier == _settings.LastEngine)
                              ?? Engines.FirstOrDefault();
             UpdateEngineWarning();
@@ -337,23 +365,20 @@ public sealed partial class MainViewModel : ObservableObject
         EngineWarning = null;
         if (SelectedProject is not { IsAvailable: true } project) return;
 
-        var association = project.File.EngineAssociation;
-        var expected = EngineDiscovery.ResolveAssociation(association, project.Path, Engines);
-        if (expected is not null)
-        {
-            if (!ReferenceEquals(expected, SelectedEngine))
-            {
-                EngineWarning = $"{project.Name} is associated with {expected.DisplayName}.";
-                SuggestedEngine = expected;
-            }
-        }
-        else if (!string.IsNullOrEmpty(association))
-        {
-            EngineWarning = association.StartsWith('{')
-                ? $"{project.Name} is associated with a source build ({association}) that isn't registered on this machine."
-                : $"{project.Name} is associated with UE {association}, which isn't installed.";
-        }
+        var check = ProjectEngine.Check(project.Name, IdentifyEngine(project), SelectedEngine, Engines);
+        EngineWarning = check.Warning;
+        SuggestedEngine = check.Suggested;
     }
+
+    /// <summary>Engine versions from project logs, read once per project folder (cleared on Refresh).</summary>
+    private readonly Dictionary<string, EngineVersion?> _logVersions = new(PathUtil.Comparer);
+
+    private ProjectEngineInfo IdentifyEngine(ProjectItem project) =>
+        ProjectEngine.Identify(project.File.EngineAssociation, project.Path, Engines, dir =>
+        {
+            if (!_logVersions.TryGetValue(dir, out var v)) _logVersions[dir] = v = ProjectEngine.ReadVersionFromLog(dir);
+            return v;
+        });
 
     [RelayCommand]
     private void SwitchEngine()

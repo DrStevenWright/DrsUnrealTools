@@ -12,7 +12,7 @@ public class LaunchConfigTests
     {
         using var tmp = new TempDir();
         var file = ProjectConfigFile.Load(Path.Combine(tmp.Root, "missing.ini"));
-        Assert.Equal(["Standalone", "Listen Server", "Dedicated Server", "Client"], file.GetConfigs().Select(c => c.Name));
+        Assert.Equal(["Dedicated Server", "Listen Server", "Client", "Standalone"], file.GetConfigs().Select(c => c.Name));
         Assert.Empty(file.Warnings);
     }
 
@@ -70,10 +70,10 @@ public class LaunchConfigTests
             Args=-game -log -noHMD
             """);
         var configs = file.GetConfigs();
-        Assert.Equal("Standalone", configs[0].Name);
-        Assert.Equal("-game -log -noHMD", configs[0].Args);
-        Assert.False(configs[0].IsBuiltIn);
-        Assert.True(configs[0].Rule.UsesMap);
+        Assert.Equal("Standalone", configs[3].Name);   // keeps the built-in's position (last)
+        Assert.Equal("-game -log -noHMD", configs[3].Args);
+        Assert.False(configs[3].IsBuiltIn);
+        Assert.True(configs[3].Rule.UsesMap);
         Assert.Equal(4, configs.Count);
     }
 
@@ -121,7 +121,7 @@ public class LaunchConfigTests
         using var tmp = new TempDir();
         var path = Path.Combine(tmp.Root, @"Config\UETestTool.ini");
         var file = ProjectConfigFile.Load(path);
-        file.Save("Standalone (noHMD)", LaunchConfig.BuiltIns[0], "-game -noHMD");
+        file.Save("Standalone (noHMD)", LaunchConfig.FindBuiltIn(LaunchConfig.Standalone)!, "-game -noHMD");
 
         var text = File.ReadAllText(path);
         Assert.StartsWith("; UE Test Tool", text);

@@ -9,6 +9,9 @@ public interface IUserDialogs
 {
     bool Confirm(string title, string message);
     string? PickProjectFile(string? initialDirectory);
+
+    /// <summary>Lets the user edit their search folders. Returns the new list, or null if cancelled.</summary>
+    IReadOnlyList<string>? EditSearchFolders(IReadOnlyList<string> folders, IReadOnlyList<string> unrealFolders);
 }
 
 public static class Launcher

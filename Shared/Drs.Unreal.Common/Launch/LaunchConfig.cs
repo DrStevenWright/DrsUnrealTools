@@ -29,10 +29,10 @@ public sealed record LaunchConfig(string Name, string Base, LaunchRule Rule, str
     /// <summary>The defaults every project gets. A project .ini section with the same name overrides one.</summary>
     public static IReadOnlyList<LaunchConfig> BuiltIns { get; } =
     [
-        new(Standalone, Standalone, LaunchRule.WithMap, "-game -log", true),
-        new(ListenServer, ListenServer, new LaunchRule(true, "?listen"), "-game -log", true),
         new(DedicatedServer, DedicatedServer, LaunchRule.WithMap, "-server -log", true),
+        new(ListenServer, ListenServer, new LaunchRule(true, "?listen"), "-game -log", true),
         new(Client, Client, new LaunchRule(false, "", "127.0.0.1"), "-game -log", true),
+        new(Standalone, Standalone, LaunchRule.WithMap, "-game -log", true),
     ];
 
     public static LaunchConfig? FindBuiltIn(string name) =>
