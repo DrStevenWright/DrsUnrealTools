@@ -4,7 +4,11 @@ namespace Drs.Unreal.Common.Tests;
 
 public class IniDocumentTests
 {
-    private const string Sample = """
+    // Raw string literals take the source file's line endings, which differ between checkouts
+    // (Git converts to CRLF on Windows runners), so every comparison normalises to LF via Lf().
+    private static string Lf(string s) => s.Replace("\r\n", "\n");
+
+    private static readonly string Sample = Lf("""
         ; Header comment
         [First]
         A=1
@@ -15,12 +19,12 @@ public class IniDocumentTests
         [Second]
         C=3
         Unknown=kept
-        """;
+        """);
 
     [Fact]
     public void RoundTripsUnchanged()
     {
-        var text = Sample.Replace("\n", "\r\n") + "\r\n";
+        var text = Sample.Replace("\n", "\r\n") + "\r\n";   // Sample is LF; this makes a CRLF file
         Assert.Equal(text, IniDocument.Parse(text).ToString());
     }
 
@@ -42,7 +46,7 @@ public class IniDocumentTests
         doc.Set("First", "New", "x");
         doc.Set("Third", "D", "4");
 
-        Assert.Equal("""
+        Assert.Equal(Lf("""
             ; Header comment
             [First]
             A=one
@@ -58,7 +62,7 @@ public class IniDocumentTests
             [Third]
             D=4
 
-            """, doc.ToString().Replace("\r\n", "\n"));
+            """), Lf(doc.ToString()));
     }
 
     [Fact]
@@ -66,7 +70,7 @@ public class IniDocumentTests
     {
         var doc = IniDocument.Parse(Sample + "\n\n[Third]\nD=4\n");
         Assert.True(doc.RemoveSection("Second"));
-        Assert.Equal("""
+        Assert.Equal(Lf("""
             ; Header comment
             [First]
             A=1
@@ -76,7 +80,7 @@ public class IniDocumentTests
             [Third]
             D=4
 
-            """, doc.ToString());
+            """), Lf(doc.ToString()));
         Assert.False(doc.RemoveSection("Second"));
     }
 
@@ -85,7 +89,7 @@ public class IniDocumentTests
     {
         var doc = IniDocument.Parse(Sample);
         doc.RemoveSection("Second");
-        Assert.EndsWith("B = two words\n", doc.ToString());
+        Assert.EndsWith("B = two words\n", Lf(doc.ToString()));
     }
 
     [Fact]
