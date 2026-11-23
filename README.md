@@ -4,7 +4,7 @@ Small Windows tools for working with Unreal Engine projects.
 
 | Tool | What it does |
 |---|---|
-| [UE Test Tool](Tools/UETestTool/README.md) | Launch any Unreal project on your machine as Standalone, Listen Server, Dedicated Server or Client, with per-project custom configurations. |
+| [UE Test Tool](Tools/UETestTool/README.md) | Launch any Unreal project on your machine as Dedicated Server, Listen Server, Client or Standalone, with per-project custom configurations. |
 
 ## Download
 
