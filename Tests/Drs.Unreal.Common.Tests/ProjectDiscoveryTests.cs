@@ -5,33 +5,18 @@ namespace Drs.Unreal.Common.Tests;
 public class ProjectDiscoveryTests
 {
     [Fact]
-    public void ParsesEditorSettings_StructAndPlainForms()
-    {
-        const string ini = """
-            [/Script/UnrealEd.EditorSettings]
-            CreatedProjectPaths=D:\Unreal Projects
-            CreatedProjectPaths=D:/
-            RecentlyOpenedProjectFiles=(ProjectName="D:/Repos/A/A.uproject",LastOpenTime=2026.11.23-11.11.00)
-            +RecentlyOpenedProjectFiles=D:/Old/B/B.uproject
-            RecentlyOpenedProjectFilesExtra=ignored
-            """;
-        var info = ProjectDiscovery.ParseEditorSettings(ini.Replace("\n", "\r\n"));
-        Assert.Equal(["D:/Repos/A/A.uproject", "D:/Old/B/B.uproject"], info.RecentProjects);
-        Assert.Equal([@"D:\Unreal Projects", "D:/"], info.CreatedProjectPaths);
-    }
-
-    [Fact]
     public void ScanFolder_FindsProjectsToDepth_AndSkipsInsideProjects()
     {
         using var tmp = new TempDir();
         var a = tmp.File(@"A\A.uproject");
         tmp.File(@"A\Plugins\Nested\Nested.uproject");        // inside a project: not scanned
         var b = tmp.File(@"Group\B\B.uproject");               // depth 2
-        tmp.File(@"Deep\X\Y\C\C.uproject");                    // depth 3: too deep
+        var c = tmp.File(@"Org\Repo\Game\C.uproject");          // depth 3
+        tmp.File(@"Deep\W\X\Y\D.uproject");                    // depth 4: too deep
         tmp.File(@"Group\Saved\S\S.uproject");                 // skipped folder
 
         var found = ProjectDiscovery.ScanFolder(tmp.Root).ToList();
-        Assert.Equal([a, b], found.Order());
+        Assert.Equal(new[] { a, b, c }.Order(), found.Order());
     }
 
     [Fact]
@@ -69,28 +54,21 @@ public class ProjectDiscoveryTests
     }
 
     [Fact]
-    public void Discover_CombinesSources_ExcludesEngineTemplates()
+    public void Discover_SearchesOnlyTheGivenFolders_ExcludesEngineTemplates()
     {
         using var tmp = new TempDir();
-        var recent = tmp.File(@"Projects\Recent\Recent.uproject");
-        var created = tmp.File(@"Created\New\New.uproject");
-        var searched = tmp.File(@"Search\Found\Found.uproject");
-        var template = tmp.File(@"Engine58\Templates\TP\TP.uproject");
-        var settings = tmp.File(@"LocalUE\5.8\Saved\Config\WindowsEditor\EditorSettings.ini", $"""
-            CreatedProjectPaths={Path.Combine(tmp.Root, "Created")}
-            RecentlyOpenedProjectFiles=(ProjectName="{recent.Replace('\\', '/')}",LastOpenTime=x)
-            RecentlyOpenedProjectFiles=(ProjectName="{template}",LastOpenTime=x)
-            RecentlyOpenedProjectFiles=(ProjectName="Z:/Gone/Gone.uproject",LastOpenTime=x)
-            """);
+        var a = tmp.File(@"Repos\A\A.uproject");
+        var b = tmp.File(@"Unreal Projects\B\B.uproject");
+        tmp.File(@"Elsewhere\C\C.uproject");                                    // not a search folder
+        tmp.File(@"Repos\UnrealEngine\Engine\Build\Build.version", "{}");
+        tmp.File(@"Repos\UnrealEngine\Templates\TP\TP.uproject");             // inside an engine tree
 
         var result = ProjectDiscovery.Discover(
-            searchFolders: [Path.Combine(tmp.Root, "Search")],
-            engineRoots: [Path.Combine(tmp.Root, "Engine58")],
-            unrealLocalAppData: Path.Combine(tmp.Root, "LocalUE"));
+            searchFolders: [Path.Combine(tmp.Root, "Repos"), Path.Combine(tmp.Root, "Unreal Projects")],
+            engineRoots: [Path.Combine(tmp.Root, @"Repos\UnrealEngine")]);
 
-        Assert.Equal(
-            new[] { (recent, ProjectSource.Recent), (created, ProjectSource.Recent), (searched, ProjectSource.SearchFolder) },
-            result.Select(r => (r.UProjectPath, r.Source)));
+        Assert.Equal([(a, ProjectSource.SearchFolder), (b, ProjectSource.SearchFolder)], result.Select(r => (r.UProjectPath, r.Source)));
+        Assert.Empty(ProjectDiscovery.Discover([], []));
     }
 
     [Fact]

@@ -20,10 +20,10 @@ public sealed class ProjectCacheEntry
 }
 
 /// <summary>
-/// The app's durable memory of every project discovery has ever found. UE's own recent-project lists
-/// are per engine version and get lost (engine upgrades, cleaned AppData), so discovery results only
-/// ever add to this cache; an entry is removed only when its .uproject is confirmed gone, or when the
-/// user explicitly removes it (which also ignores it so discovery doesn't re-add it).
+/// The app's memory of the projects in its list: those found in the user's search folders, plus those added
+/// with Browse…. It keeps projects on drives that are currently unreachable (shown greyed out). An entry is
+/// removed when its .uproject is confirmed gone, when it is no longer inside any search folder (see
+/// <see cref="Prune"/>), or when the user removes it (which also ignores it so discovery doesn't re-add it).
 /// </summary>
 public sealed class ProjectCache
 {
@@ -46,6 +46,18 @@ public sealed class ProjectCache
             added++;
         }
         return added;
+    }
+
+    /// <summary>
+    /// Drops discovered entries that aren't inside any of <paramref name="searchFolders"/> (e.g. a folder was
+    /// removed from the list). Projects added with Browse… are kept.
+    /// </summary>
+    /// <returns>Number of projects dropped.</returns>
+    public int Prune(IEnumerable<string> searchFolders)
+    {
+        var folders = searchFolders.Select(f => { try { return PathUtil.Normalize(f); } catch (Exception) { return null; } })
+            .OfType<string>().ToList();
+        return Projects.RemoveAll(p => p.Source != ProjectSource.Browsed && !folders.Any(f => PathUtil.IsUnder(p.Path, f)));
     }
 
     /// <summary>Adds (or un-ignores) a project the user picked with Browse….</summary>

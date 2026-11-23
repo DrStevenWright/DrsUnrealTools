@@ -13,13 +13,11 @@ public partial class SearchFoldersWindow : Window
 {
     private readonly ObservableCollection<string> _folders;
 
-    public SearchFoldersWindow(IEnumerable<string> folders, IReadOnlyList<string> unrealFolders)
+    public SearchFoldersWindow(IEnumerable<string> folders)
     {
         InitializeComponent();
         _folders = new ObservableCollection<string>(folders);
         FolderList.ItemsSource = _folders;
-
-        UnrealFolders.Text = unrealFolders.Count == 0 ? "None" : string.Join("\n", unrealFolders);
     }
 
     /// <summary>The edited list, once OK is clicked.</summary>

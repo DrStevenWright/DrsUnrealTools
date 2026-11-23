@@ -11,7 +11,24 @@ public interface IUserDialogs
     string? PickProjectFile(string? initialDirectory);
 
     /// <summary>Lets the user edit their search folders. Returns the new list, or null if cancelled.</summary>
-    IReadOnlyList<string>? EditSearchFolders(IReadOnlyList<string> folders, IReadOnlyList<string> unrealFolders);
+    IReadOnlyList<string>? EditSearchFolders(IReadOnlyList<string> folders);
+}
+
+public static class AppInfo
+{
+    /// <summary>
+    /// The app's version as set at build time from the git tag (see Directory.Build.props), e.g. <c>0.3.0</c>, or
+    /// <c>0.3.1-alpha.0.2</c> for a build made after that tag. The commit hash the SDK appends (<c>+abc123…</c>) is dropped.
+    /// </summary>
+    public static string Version { get; } = ReadVersion();
+
+    private static string ReadVersion()
+    {
+        var info = typeof(AppInfo).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion;
+        return string.IsNullOrEmpty(info) ? "" : info.Split('+')[0];
+    }
 }
 
 public static class Launcher
