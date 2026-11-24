@@ -106,6 +106,23 @@ public sealed class IniDocument
         _lines.Insert(lastKey + 1, line);
     }
 
+    /// <summary>
+    /// Adds a key after the section's last key (or adds the section at the end), even if the key is already there.
+    /// For keys that may repeat, such as a session's <c>Launch=</c> lines.
+    /// </summary>
+    public void Add(string section, string key, string value)
+    {
+        ValidateName(section, nameof(section), "[]");
+        ValidateName(key, nameof(key), "=");
+        if (value.Contains('\n') || value.Contains('\r')) throw new ArgumentException("Values can't span lines.", nameof(value));
+
+        var range = FindSection(section) ?? AppendSection(section);
+        var lastKey = range.Start;
+        for (var i = range.Start + 1; i < range.End; i++)
+            if (ParseKeyValue(_lines[i]) is not null) lastKey = i;
+        _lines.Insert(lastKey + 1, $"{key}={value}");
+    }
+
     /// <summary>Removes every occurrence of a key from a section. Returns true if anything was removed.</summary>
     public bool Remove(string section, string key)
     {

@@ -1,0 +1,90 @@
+<Window x:Class="UETestTool.SessionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:UETestTool"
+        Title="Session"
+        Icon="Assets/UETestTool.ico"
+        Width="520" Height="480" MinWidth="420" MinHeight="360"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+
+    <Window.Resources>
+        <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+        <Style x:Key="DimText" TargetType="TextBlock">
+            <Setter Property="Opacity" Value="0.65" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="CountButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="MinWidth" Value="0" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20,16,20,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />   <!-- name -->
+            <RowDefinition Height="Auto" />   <!-- server -->
+            <RowDefinition Height="Auto" />   <!-- clients header -->
+            <RowDefinition Height="*" />      <!-- clients -->
+            <RowDefinition Height="Auto" />   <!-- summary / error -->
+            <RowDefinition Height="Auto" />   <!-- buttons -->
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Text="Name" VerticalAlignment="Center" Margin="0,0,12,0" />
+        <TextBox Grid.Column="1" x:Name="NameBox" AutomationProperties.Name="Session name" TextChanged="Changed" />
+
+        <TextBlock Grid.Row="1" Text="Server" VerticalAlignment="Center" Margin="0,10,12,0" />
+        <ComboBox Grid.Row="1" Grid.Column="1" x:Name="ServerBox" Margin="0,10,0,0" DisplayMemberPath="Name"
+                  AutomationProperties.Name="Server" SelectionChanged="Changed"
+                  ToolTip="Starts first, on the selected map. The clients start once it's listening." />
+
+        <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Margin="0,16,0,6" FontWeight="SemiBold" Text="Clients" />
+
+        <Border Grid.Row="3" Grid.ColumnSpan="2" BorderThickness="1" CornerRadius="4" Padding="4"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="ClientList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="local:ClientCount">
+                            <Grid Margin="6,3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="36" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Args}" />
+                                <Button Grid.Column="1" Style="{StaticResource CountButton}" Content="&#xE738;" Click="Minus_Click"
+                                        AutomationProperties.Name="{Binding Name, StringFormat='Fewer {0}'}" ToolTip="One fewer" />
+                                <TextBlock Grid.Column="2" Text="{Binding Count}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           FontWeight="SemiBold" />
+                                <Button Grid.Column="3" Style="{StaticResource CountButton}" Content="&#xE710;" Click="Plus_Click"
+                                        AutomationProperties.Name="{Binding Name, StringFormat='More {0}'}" ToolTip="One more" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Margin="0,8,0,0">
+            <TextBlock x:Name="SummaryText" Style="{StaticResource DimText}" />
+            <TextBlock x:Name="ErrorText" Foreground="#E05050" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed" />
+        </StackPanel>
+
+        <DockPanel Grid.Row="5" Grid.ColumnSpan="2" Margin="0,16,0,0">
+            <TextBlock DockPanel.Dock="Left" Style="{StaticResource DimText}" VerticalAlignment="Center" MaxWidth="240"
+                       Text="Saved to the project's Config/UETestTool.ini." />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Save" IsDefault="True" Click="Save_Click" MinWidth="90" Margin="0,0,8,0" Style="{DynamicResource AccentButtonStyle}" />
+                <Button Content="Cancel" IsCancel="True" MinWidth="90" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

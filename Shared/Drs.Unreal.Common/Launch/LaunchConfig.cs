@@ -21,6 +21,12 @@ public sealed record LaunchConfig(string Name, string Base, LaunchRule Rule, str
 {
     public override string ToString() => Name;
 
+    /// <summary>Based on Dedicated Server or Listen Server, so it can be the server of a session.</summary>
+    public bool IsServer => Base is DedicatedServer or ListenServer;
+
+    /// <summary>Connects to a server (instead of opening a map), so it can be a client in a session.</summary>
+    public bool IsClient => !IsServer && !string.IsNullOrWhiteSpace(Rule.Connect);
+
     public const string Standalone = "Standalone";
     public const string ListenServer = "Listen Server";
     public const string DedicatedServer = "Dedicated Server";

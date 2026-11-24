@@ -9,6 +9,7 @@ namespace Drs.Unreal.Common.Launch;
 /// [State]
 /// LastMap=/Game/Maps/DrsTestMap
 /// LastConfig=Standalone (noHMD)
+/// LastSession=Multiplayer
 ///
 /// [CustomArgs]
 /// Standalone (noHMD)=-ResX=1920 -ResY=1080
@@ -21,6 +22,9 @@ public sealed class ProjectUserState
 
     public string? LastMap { get; set; }
     public string? LastConfig { get; set; }
+
+    /// <summary>The session last selected, if a session (rather than <see cref="LastConfig"/>) was selected.</summary>
+    public string? LastSession { get; set; }
 
     /// <summary>Engine identifier last used with this project (e.g. <c>5.8</c> or a source build's <c>{GUID}</c>).</summary>
     public string? LastEngine { get; set; }
@@ -37,6 +41,7 @@ public sealed class ProjectUserState
         {
             LastMap = NullIfEmpty(doc.Get(StateSection, "LastMap")),
             LastConfig = NullIfEmpty(doc.Get(StateSection, "LastConfig")),
+            LastSession = NullIfEmpty(doc.Get(StateSection, "LastSession")),
             LastEngine = NullIfEmpty(doc.Get(StateSection, "LastEngine")),
         };
         foreach (var (key, value) in doc.GetAll(CustomArgsSection))
@@ -50,6 +55,7 @@ public sealed class ProjectUserState
         var doc = IniDocument.Load(path);
         SetOrRemove(doc, StateSection, "LastMap", LastMap);
         SetOrRemove(doc, StateSection, "LastConfig", LastConfig);
+        SetOrRemove(doc, StateSection, "LastSession", LastSession);
         SetOrRemove(doc, StateSection, "LastEngine", LastEngine);
 
         foreach (var (key, _) in doc.GetAll(CustomArgsSection))
