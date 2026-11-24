@@ -18,7 +18,16 @@ public sealed class ProjectItem(UProjectFile file, ProjectAvailability availabil
     public override string ToString() => Name;
 }
 
-public sealed partial class ConfigItem : ObservableObject
+/// <summary>A row in the configurations list: a configuration or a session.</summary>
+public interface ILaunchItem
+{
+    string Name { get; }
+
+    /// <summary>The list heading the row appears under ("" for configurations, which come first).</summary>
+    string Group { get; }
+}
+
+public sealed partial class ConfigItem : ObservableObject, ILaunchItem
 {
     private readonly Action<ConfigItem> _customArgsChanged;
 
@@ -33,6 +42,7 @@ public sealed partial class ConfigItem : ObservableObject
     public LaunchConfig Config { get; }
     public string Name => Config.Name;
     public string Args => Config.Args;
+    public string Group => "";
 
     /// <summary>Defined in the project's UETestTool.ini (so it can be deleted there).</summary>
     public bool IsProjectDefined { get; }
@@ -56,6 +66,40 @@ public sealed partial class ConfigItem : ObservableObject
     private string _customArgs;
 
     partial void OnCustomArgsChanged(string value) => _customArgsChanged(this);
+
+    public override string ToString() => Name;
+}
+
+public sealed class SessionItem(LaunchSession session, bool isProjectDefined, string? error) : ILaunchItem
+{
+    public LaunchSession Session { get; } = session;
+    public string Name => Session.Name;
+    public string Group => "Sessions";
+    public string Description => Session.Description;
+
+    /// <summary>Defined in the project's UETestTool.ini (so it can be deleted there).</summary>
+    public bool IsProjectDefined { get; } = isProjectDefined;
+
+    /// <summary>Why the session can't launch (e.g. it names a deleted configuration), or null.</summary>
+    public string? Error { get; } = error;
+    public bool HasError => Error is not null;
+
+    /// <summary>What the row shows: what it launches, or why it can't.</summary>
+    public string RowText => Error is null ? Description : $"Can't launch: {Error}";
+
+    public string ToolTip
+    {
+        get
+        {
+            var origin = IsProjectDefined
+                ? (LaunchSession.FindBuiltIn(Name) is not null ? "Overrides the built-in; defined in Config/UETestTool.ini" : "Defined in Config/UETestTool.ini")
+                : "Built-in";
+            var what = Error is null
+                ? "Starts the server, waits until it's listening, then starts the clients."
+                : $"Can't launch: {Error}";
+            return $"{what}\n{origin}.\n\n{string.Join("\n", Session.Entries)}";
+        }
+    }
 
     public override string ToString() => Name;
 }

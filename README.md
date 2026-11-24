@@ -4,7 +4,7 @@ Small Windows tools for working with Unreal Engine projects.
 
 | Tool | What it does |
 |---|---|
-| [UE Test Tool](Tools/UETestTool/README.md) | Launch any Unreal project on your machine as Dedicated Server, Listen Server, Client or Standalone, with per-project custom configurations. |
+| [UE Test Tool](Tools/UETestTool/README.md) | Launch any Unreal project on your machine as Dedicated Server, Listen Server, Client or Standalone, or a whole multiplayer session (a server, then its clients once it's listening), with per-project custom configurations and sessions. |
 
 ## Download
 
@@ -43,7 +43,7 @@ The version comes from git tags ([MinVer](https://github.com/adamralph/minver)):
 
    The script checks the repo and main's CI build, then tags and pushes `v0.3.0`. GitHub Actions tests, builds and publishes the release with `UETestTool.exe` attached. The script waits for that build, then installs the exe into `%LOCALAPPDATA%\Programs\UE Test Tool`, adding a Start menu shortcut if needed. Add `-DryRun` to run only the checks, or `-NoInstall` to skip installing.
 
-With Claude Code, just say **"Publish 0.3.0"**. The project skill in `.claude/skills/publish-release` commits and merges any pending work through a PR, then runs the script.
+With Claude Code, run `/git:publish` for any uncommitted work, then say **"Publish 0.3.0"**. The project skill in `.claude/skills/publish-release` waits for the PR's checks, merges it, deletes its local branch, then runs the script.
 
 ## License
 

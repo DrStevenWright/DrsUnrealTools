@@ -95,14 +95,7 @@ public sealed class ProjectConfigFile
         var section = SectionPrefix + name;
         var baseConfig = LaunchConfig.FindBuiltIn(template.Base) ?? LaunchConfig.FindBuiltIn(LaunchConfig.Standalone)!;
 
-        if (_doc.SectionNames.Count() == 0)
-        {
-            _doc.AddHeaderComment(
-                "UE Test Tool launch configurations for this project. Commit this file to share them.",
-                "Each [Config.<Name>] section: Template=<built-in or earlier config>, Args=<command-line arguments>.",
-                "Optional overrides: Map=True|False, MapOptions=<e.g. ?listen>, Connect=<address>.");
-        }
-
+        AddHeaderIfNew();
         _doc.Set(section, "Template", baseConfig.Name);
         _doc.Set(section, "Args", args.Trim());
         SetOrRemove(section, "Map", template.Rule.UsesMap != baseConfig.Rule.UsesMap ? template.Rule.UsesMap.ToString() : null);
@@ -110,6 +103,72 @@ public sealed class ProjectConfigFile
         SetOrRemove(section, "Connect", template.Rule.Connect != baseConfig.Rule.Connect ? template.Rule.Connect ?? "" : null);
         _doc.Save(_path);
     }
+
+    // ---- Sessions -----------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Built-in sessions (possibly overridden) followed by the project's own, in file order. Each
+    /// <c>[Session.&lt;Name&gt;]</c> section lists one <c>Launch=&lt;configuration&gt;</c> line per instance.
+    /// Sessions that can't launch with <paramref name="configs"/> are kept, with a warning added to <see cref="Warnings"/>
+    /// (call <see cref="GetConfigs"/> first: it clears them).
+    /// </summary>
+    public IReadOnlyList<LaunchSession> GetSessions(IReadOnlyList<LaunchConfig> configs)
+    {
+        var result = LaunchSession.BuiltIns.ToList();
+        foreach (var section in _doc.SectionNames.Where(s =>
+                     s.StartsWith(SessionPrefix, StringComparison.OrdinalIgnoreCase) && s.Length > SessionPrefix.Length))
+        {
+            var name = section[SessionPrefix.Length..].Trim();
+            var entries = _doc.GetAll(section)
+                .Where(kv => string.Equals(kv.Key, LaunchKey, StringComparison.OrdinalIgnoreCase) && kv.Value.Length > 0)
+                .Select(kv => kv.Value)
+                .ToList();
+            var session = new LaunchSession(name, entries, IsBuiltIn: false);
+            var existing = result.FindIndex(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (existing >= 0) result[existing] = session;
+            else result.Add(session);
+        }
+        foreach (var session in result)
+            if (session.Resolve(configs).Error is { } error)
+                Warnings.Add($"Session '{session.Name}' can't launch: {error}");
+        return result;
+    }
+
+    /// <summary>Adds or replaces a session, keeping the section's place (and its comments) in the file.</summary>
+    public void SaveSession(string name, IReadOnlyList<string> entries)
+    {
+        if (LaunchConfig.ValidateName(name) is { } error) throw new ArgumentException(error, nameof(name));
+        var section = SessionPrefix + name;
+        AddHeaderIfNew();
+        _doc.Remove(section, LaunchKey);
+        foreach (var entry in entries) _doc.Add(section, LaunchKey, entry);
+        _doc.Save(_path);
+    }
+
+    /// <summary>Removes a project session (or a built-in override). Returns false if the file doesn't define it.</summary>
+    public bool DeleteSession(string name)
+    {
+        if (!_doc.RemoveSection(SessionPrefix + name)) return false;
+        _doc.Save(_path);
+        return true;
+    }
+
+    public bool DefinesSession(string name) => _doc.HasSection(SessionPrefix + name);
+
+    public const string SessionPrefix = "Session.";
+    private const string LaunchKey = "Launch";
+
+    private void AddHeaderIfNew()
+    {
+        if (_doc.SectionNames.Any()) return;
+        _doc.AddHeaderComment(
+            "UE Test Tool launch configurations for this project. Commit this file to share them.",
+            "Each [Config.<Name>] section: Template=<built-in or earlier config>, Args=<command-line arguments>.",
+            "Optional overrides: Map=True|False, MapOptions=<e.g. ?listen>, Connect=<address>.",
+            "Each [Session.<Name>] section: one Launch=<config> line per instance (one server, then its clients).");
+    }
+
+    // ---- Configurations ---------------------------------------------------------------------------------
 
     /// <summary>Removes a project configuration (or a built-in override). Returns false if the file doesn't define it.</summary>
     public bool Delete(string name)

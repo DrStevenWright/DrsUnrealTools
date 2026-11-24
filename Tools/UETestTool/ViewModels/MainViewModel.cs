@@ -1,5 +1,8 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
+using System.Windows.Data;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -34,17 +37,39 @@ public sealed partial class MainViewModel : ObservableObject
         _dialogs = dialogs;
         _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _saveTimer.Tick += (_, _) => FlushUserState();
+
+        _processes.Changed += () =>
+        {
+            OnPropertyChanged(nameof(StopText));
+            OnPropertyChanged(nameof(StopToolTip));
+            StopCommand.NotifyCanExecuteChanged();
+        };
+
+        LaunchItemsView = CollectionViewSource.GetDefaultView(LaunchItems);
+        LaunchItemsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ILaunchItem.Group)));
     }
 
     public ObservableCollection<ProjectItem> Projects { get; } = [];
     public ObservableCollection<EngineInstall> Engines { get; } = [];
     public ObservableCollection<MapInfo> Maps { get; } = [];
     public ObservableCollection<ConfigItem> Configs { get; } = [];
+    public ObservableCollection<SessionItem> Sessions { get; } = [];
+
+    /// <summary>Configurations then sessions: the rows of the list.</summary>
+    public ObservableCollection<ILaunchItem> LaunchItems { get; } = [];
+
+    /// <summary><see cref="LaunchItems"/> grouped under their headings.</summary>
+    public ICollectionView LaunchItemsView { get; }
 
     [ObservableProperty] private ProjectItem? _selectedProject;
     [ObservableProperty] private EngineInstall? _selectedEngine;
     [ObservableProperty] private MapInfo? _selectedMap;
-    [ObservableProperty] private ConfigItem? _selectedConfig;
+
+    /// <summary>The selected row: a configuration or a session.</summary>
+    [ObservableProperty] private ILaunchItem? _selectedItem;
+
+    public ConfigItem? SelectedConfig => SelectedItem as ConfigItem;
+    public SessionItem? SelectedSession => SelectedItem as SessionItem;
 
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusText = "";
@@ -57,10 +82,10 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Problems in the project's UETestTool.ini (unknown templates etc.).</summary>
     [ObservableProperty] private string? _configWarnings;
 
-    [ObservableProperty] private bool _showCommand;
+    /// <summary>The selected row's command line(s), shown on the Launch button's tooltip.</summary>
     [ObservableProperty] private string _commandPreview = "";
 
-    public bool IsMapEnabled => SelectedConfig?.Config.Rule.UsesMap ?? true;
+    public bool IsMapEnabled => SelectedSession is not null || (SelectedConfig?.Config.Rule.UsesMap ?? true);
 
     public string MapHint => SelectedConfig?.Config.Rule is { UsesMap: false } rule
         ? (string.IsNullOrEmpty(rule.Connect) ? "Not used by this configuration" : $"Not used: connects to {rule.Connect}")
@@ -238,6 +263,8 @@ public sealed partial class MainViewModel : ObservableObject
         {
             Maps.Clear();
             Configs.Clear();
+            Sessions.Clear();
+            LaunchItems.Clear();
             _configFile = null;
             _userStatePath = null;
             _userState = new ProjectUserState();
@@ -256,7 +283,7 @@ public sealed partial class MainViewModel : ObservableObject
             _userStatePath = ProjectFiles.UserState(project.Directory);
             _userState = ProjectUserState.Load(_userStatePath);
             _configFile = ProjectConfigFile.Load(ProjectFiles.SharedConfig(project.Directory));
-            ReloadConfigs(_userState.LastConfig);
+            ReloadConfigs(_userState.LastConfig, _userState.LastSession);
 
             // Engine: the one last used with this project, else the project's own association (or an installed engine
             // of the same release), else the last one used anywhere.
@@ -270,7 +297,6 @@ public sealed partial class MainViewModel : ObservableObject
         {
             _loading = false;
             OnPropertyChanged(nameof(SharedConfigPath));
-            OnPropertyChanged(nameof(SaveConfigButtonText));
         }
 
         // Maps are scanned in the background; the user can already change other settings meanwhile.
@@ -293,33 +319,33 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    private void ReloadConfigs(string? select)
+    /// <summary>Re-reads the configurations and sessions, then selects the named session, else the named configuration.</summary>
+    private void ReloadConfigs(string? select, string? selectSession = null)
     {
         if (_configFile is null) return;
         var wasLoading = _loading;
         _loading = true;
-        // Clearing the collection makes the bound list and template dropdown push null selections back;
-        // remember the template by name and suppress its args prefill while rebuilding.
-        var templateName = NewConfigTemplate?.Name;
-        _suppressTemplateArgs = true;
         try
         {
             Configs.Clear();
-            foreach (var config in _configFile.GetConfigs())
+            Sessions.Clear();
+            LaunchItems.Clear();
+            var configs = _configFile.GetConfigs();
+            foreach (var config in configs)
                 Configs.Add(new ConfigItem(config, _userState.GetCustomArgs(config.Name), _configFile.Defines(config.Name), OnCustomArgsChanged));
+            foreach (var session in _configFile.GetSessions(configs))
+                Sessions.Add(new SessionItem(session, _configFile.DefinesSession(session.Name), session.Resolve(configs).Error));
+            foreach (var item in Configs) LaunchItems.Add(item);
+            foreach (var item in Sessions) LaunchItems.Add(item);
             ConfigWarnings = _configFile.Warnings.Count == 0 ? null : string.Join("\n", _configFile.Warnings);
-            SelectedConfig = Configs.FirstOrDefault(c => string.Equals(c.Name, select, StringComparison.OrdinalIgnoreCase))
-                             ?? Configs.FirstOrDefault();
-            NewConfigTemplate = Configs.FirstOrDefault(c => c.Name == templateName) ?? Configs.FirstOrDefault();
+            SelectedItem = (ILaunchItem?)Sessions.FirstOrDefault(s => selectSession is not null && string.Equals(s.Name, selectSession, StringComparison.OrdinalIgnoreCase))
+                           ?? Configs.FirstOrDefault(c => string.Equals(c.Name, select, StringComparison.OrdinalIgnoreCase))
+                           ?? Configs.FirstOrDefault();
         }
         finally
         {
-            _suppressTemplateArgs = false;
             _loading = wasLoading;
-            OnPropertyChanged(nameof(SaveConfigButtonText));
         }
-        // First load (or after Add cleared the row): prefill from the template.
-        if (string.IsNullOrWhiteSpace(NewConfigArgs) && NewConfigTemplate is not null) NewConfigArgs = NewConfigTemplate.Args;
     }
 
     // ---- Other selections ---------------------------------------------------------------------------
@@ -343,19 +369,31 @@ public sealed partial class MainViewModel : ObservableObject
         SaveUserStateSoon();
     }
 
-    partial void OnSelectedConfigChanged(ConfigItem? value)
+    partial void OnSelectedItemChanged(ILaunchItem? value)
     {
+        OnPropertyChanged(nameof(SelectedConfig));
+        OnPropertyChanged(nameof(SelectedSession));
         OnPropertyChanged(nameof(IsMapEnabled));
         OnPropertyChanged(nameof(MapHint));
         UpdateCommandPreview();
         if (_loading || value is null) return;
-        _userState.LastConfig = value.Name;
+        RememberSelection();
         SaveUserStateSoon();
+    }
+
+    private void RememberSelection()
+    {
+        if (SelectedConfig is { } config)
+        {
+            _userState.LastConfig = config.Name;
+            _userState.LastSession = null;
+        }
+        else if (SelectedSession is { } session) _userState.LastSession = session.Name;
     }
 
     private void OnCustomArgsChanged(ConfigItem item)
     {
-        if (ReferenceEquals(item, SelectedConfig)) UpdateCommandPreview();
+        if (ReferenceEquals(item, SelectedConfig) || SelectedSession is not null) UpdateCommandPreview();
         if (_loading) return;
         _userState.CustomArgs[item.Name] = item.CustomArgs;
         SaveUserStateSoon();
@@ -390,92 +428,56 @@ public sealed partial class MainViewModel : ObservableObject
 
     // ---- New / edit / delete configurations ----------------------------------------------------------
 
-    [ObservableProperty] private string _newConfigName = "";
-    [ObservableProperty] private ConfigItem? _newConfigTemplate;
-    [ObservableProperty] private string _newConfigArgs = "";
-    [ObservableProperty] private string? _newConfigError;
-
-    public string SaveConfigButtonText =>
-        Configs.Any(c => string.Equals(c.Name, NewConfigName.Trim(), StringComparison.OrdinalIgnoreCase)) ? "Save" : "Add";
-
-    partial void OnNewConfigNameChanged(string value)
-    {
-        NewConfigError = null;
-        OnPropertyChanged(nameof(SaveConfigButtonText));
-    }
-
-    partial void OnNewConfigTemplateChanged(ConfigItem? value)
-    {
-        if (value is not null && !_suppressTemplateArgs) NewConfigArgs = value.Args;
-    }
-
-    private bool _suppressTemplateArgs;
+    [RelayCommand]
+    private void NewConfig() => EditConfigCore(null);
 
     [RelayCommand]
     private void EditConfig(ConfigItem? item)
     {
-        if (item is null) return;
-        // Using the config itself as the template keeps its rule; saving under the same name updates it
-        // (or, for a built-in, creates a project override).
-        _suppressTemplateArgs = true;
-        NewConfigTemplate = item;
-        _suppressTemplateArgs = false;
-        NewConfigName = item.Name;
-        NewConfigArgs = item.Args;
-        NewConfigError = null;
+        if (item is not null) EditConfigCore(item);
     }
 
-    [RelayCommand]
-    private void SaveConfig()
+    /// <summary>
+    /// Opens the configuration editor. When editing, the configuration is its own template, so it keeps its launch rule;
+    /// saving under the same name updates it (or, for a built-in, creates a project override).
+    /// </summary>
+    private void EditConfigCore(ConfigItem? item)
     {
         if (_configFile is null || SelectedProject is null)
         {
-            NewConfigError = "Select a project first.";
+            SetStatus("Select a project first.", isError: true);
             return;
         }
-        var name = NewConfigName.Trim();
-        if (LaunchConfig.ValidateName(name) is { } error)
-        {
-            NewConfigError = error;
-            return;
-        }
-        if (NewConfigTemplate is null)
-        {
-            NewConfigError = "Choose a template.";
-            return;
-        }
+        var edit = _dialogs.EditConfig(item?.Config, Configs.Select(c => c.Config).ToList(), SelectedConfig?.Config);
+        if (edit is null) return;
 
-        var existing = Configs.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+        var existing = Configs.FirstOrDefault(c => string.Equals(c.Name, edit.Name, StringComparison.OrdinalIgnoreCase));
         if (existing is not null && !existing.IsProjectDefined)
         {
             if (!_dialogs.Confirm("Override built-in",
                     $"'{existing.Name}' is a built-in configuration.\n\nSaving will override it for everyone who uses this project's " +
                     $"Config/UETestTool.ini. Deleting the override later restores the built-in.\n\nContinue?")) return;
         }
-        else if (existing is not null && !ReferenceEquals(existing, NewConfigTemplate))
+        else if (existing is not null && !ReferenceEquals(existing, item))
         {
             if (!_dialogs.Confirm("Replace configuration", $"Replace the existing configuration '{existing.Name}'?")) return;
         }
 
+        var name = existing?.Name ?? edit.Name;
         try
         {
-            _configFile.Save(existing?.Name ?? name, NewConfigTemplate.Config, NewConfigArgs);
+            _configFile.Save(name, edit.Template, edit.Args);
         }
         catch (Exception ex)
         {
-            NewConfigError = $"Couldn't write {_configFile.Path}: {ex.Message}";
+            SetStatus($"Couldn't write {_configFile.Path}: {ex.Message}", isError: true);
             return;
         }
 
-        ReloadConfigs(existing?.Name ?? name);
-        if (!_loading)
-        {
-            _userState.LastConfig = SelectedConfig?.Name;
-            SaveUserStateSoon();
-        }
-        NewConfigName = "";
-        NewConfigError = null;
-        SetStatus($"Saved '{existing?.Name ?? name}' to Config/UETestTool.ini.");
+        ReloadConfigs(name);
+        RememberSelection();
+        SaveUserStateSoon();
+        SetStatus($"Saved '{name}' to Config/UETestTool.ini.");
     }
 
     [RelayCommand]
@@ -497,7 +499,8 @@ public sealed partial class MainViewModel : ObservableObject
             SetStatus($"Couldn't write {_configFile.Path}: {ex.Message}", isError: true);
             return;
         }
-        ReloadConfigs(ReferenceEquals(item, SelectedConfig) ? (isOverride ? item.Name : null) : SelectedConfig?.Name);
+        ReloadConfigs(ReferenceEquals(item, SelectedConfig) ? (isOverride ? item.Name : null) : SelectedConfig?.Name,
+            SelectedSession?.Name);
         SetStatus($"Deleted '{item.Name}'.");
     }
 
@@ -510,29 +513,209 @@ public sealed partial class MainViewModel : ObservableObject
         else SetStatus("This project has no Config/UETestTool.ini yet. Add a configuration to create it.");
     }
 
+    // ---- Sessions -----------------------------------------------------------------------------------
+
+    [RelayCommand]
+    private void NewSession() => EditSessionCore(null);
+
+    [RelayCommand]
+    private void EditSession(SessionItem? item)
+    {
+        if (item is not null) EditSessionCore(item);
+    }
+
+    private void EditSessionCore(SessionItem? item)
+    {
+        if (_configFile is null || SelectedProject is null)
+        {
+            SetStatus("Select a project first.", isError: true);
+            return;
+        }
+        var edit = _dialogs.EditSession(item?.Session, Configs.Select(c => c.Config).ToList());
+        if (edit is null) return;
+
+        var existing = Sessions.FirstOrDefault(s => string.Equals(s.Name, edit.Name, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null && !existing.IsProjectDefined)
+        {
+            if (!_dialogs.Confirm("Override built-in",
+                    $"'{existing.Name}' is a built-in session.\n\nSaving will override it for everyone who uses this project's " +
+                    "Config/UETestTool.ini. Deleting the override later restores the built-in.\n\nContinue?")) return;
+        }
+        else if (existing is not null && !ReferenceEquals(existing, item))
+        {
+            if (!_dialogs.Confirm("Replace session", $"Replace the existing session '{existing.Name}'?")) return;
+        }
+
+        var name = existing?.Name ?? edit.Name;
+        try
+        {
+            _configFile.SaveSession(name, edit.Entries);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Couldn't write {_configFile.Path}: {ex.Message}", isError: true);
+            return;
+        }
+        ReloadConfigs(SelectedConfig?.Name ?? _userState.LastConfig, name);
+        RememberSelection();
+        SaveUserStateSoon();
+        SetStatus($"Saved session '{name}' to Config/UETestTool.ini.");
+    }
+
+    [RelayCommand]
+    private void DeleteSession(SessionItem? item)
+    {
+        if (item is null || _configFile is null || !item.IsProjectDefined) return;
+        var isOverride = LaunchSession.FindBuiltIn(item.Name) is not null;
+        var message = isOverride
+            ? $"Remove the project override of '{item.Name}'? The built-in version will be used again."
+            : $"Delete the session '{item.Name}' from Config/UETestTool.ini?";
+        if (!_dialogs.Confirm("Delete session", message + "\n\nThis changes the project's shared config file.")) return;
+
+        try
+        {
+            _configFile.DeleteSession(item.Name);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Couldn't write {_configFile.Path}: {ex.Message}", isError: true);
+            return;
+        }
+        var keep = ReferenceEquals(item, SelectedSession) ? (isOverride ? item.Name : null) : SelectedSession?.Name;
+        ReloadConfigs(SelectedConfig?.Name ?? _userState.LastConfig, keep);
+        RememberSelection();
+        SaveUserStateSoon();
+        SetStatus($"Deleted session '{item.Name}'.");
+    }
+
     // ---- Launch -------------------------------------------------------------------------------------
 
-    private LaunchCommand? BuildCommand(out string? error)
+    /// <summary>How long a session waits for its server to start listening before giving up on the clients.</summary>
+    private static readonly TimeSpan ServerStartTimeout = TimeSpan.FromMinutes(3);
+
+    /// <summary>Gap between clients, so several editors don't all load at the same moment.</summary>
+    private static readonly TimeSpan ClientStagger = TimeSpan.FromSeconds(1.5);
+
+    private readonly LaunchedProcesses _processes = new();
+    private CancellationTokenSource? _sessionCancel;
+
+    /// <summary>A session's server has been started and the clients are waiting for it.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StopCommand))]
+    private bool _isSessionStarting;
+
+    private LaunchCommand? BuildCommand(LaunchConfig config, out string? error)
     {
         error = null;
         if (SelectedProject is not { IsAvailable: true } project) { error = "Select a project."; return null; }
         if (SelectedEngine is null) { error = "Select an engine."; return null; }
-        if (SelectedConfig is null) { error = "Select a configuration."; return null; }
-        return LaunchCommandBuilder.Build(SelectedEngine.EditorExe, project.Path, SelectedConfig.Config,
-            SelectedMap?.PackagePath, SelectedConfig.CustomArgs, out error);
+        var customArgs = Configs.FirstOrDefault(c => string.Equals(c.Name, config.Name, StringComparison.OrdinalIgnoreCase))?.CustomArgs;
+        return LaunchCommandBuilder.Build(SelectedEngine.EditorExe, project.Path, config, SelectedMap?.PackagePath, customArgs, out error);
     }
 
     private void UpdateCommandPreview()
     {
-        var command = BuildCommand(out var error);
+        if (SelectedSession is { } session)
+        {
+            CommandPreview = SessionPreview(session);
+            return;
+        }
+        if (SelectedConfig is null)
+        {
+            CommandPreview = SelectedProject is null ? "" : "Select a configuration.";
+            return;
+        }
+        var command = BuildCommand(SelectedConfig.Config, out var error);
         CommandPreview = command?.DisplayText ?? error ?? "";
     }
 
+    private string SessionPreview(SessionItem session)
+    {
+        var plan = session.Session.Resolve(Configs.Select(c => c.Config).ToList());
+        if (plan.Error is not null) return $"Can't launch '{session.Name}': {plan.Error}";
+        var server = BuildCommand(plan.Server!, out var error);
+        if (server is null) return error ?? "";
+
+        var lines = new List<string> { $"Server ({plan.Server!.Name}):", "  " + WithServerLog(server, ServerLogPathFor(server, prepare: false)).DisplayText };
+        if (plan.Clients.Count > 0) lines.Add("Then, once it's listening, each client (the server's port is added to 127.0.0.1):");
+        foreach (var client in plan.Clients)
+            lines.Add($"  {BuildCommand(client, out var clientError)?.DisplayText ?? clientError}");
+        return string.Join("\n", lines);
+    }
+
+    /// <summary>The commands a row launches, one per instance (a session's server first), or null with the reason.</summary>
+    private IReadOnlyList<string>? CommandLines(ILaunchItem item, out string? error)
+    {
+        error = null;
+        if (item is ConfigItem config)
+            return BuildCommand(config.Config, out error) is { } command ? [command.DisplayText] : null;
+        if (item is not SessionItem session) return null;
+
+        var plan = session.Session.Resolve(Configs.Select(c => c.Config).ToList());
+        if (plan.Error is not null)
+        {
+            error = $"Can't launch '{session.Name}': {plan.Error}";
+            return null;
+        }
+        if (BuildCommand(plan.Server!, out error) is not { } server) return null;
+        var lines = new List<string> { WithServerLog(server, ServerLogPathFor(server, prepare: false)).DisplayText };
+        foreach (var client in plan.Clients)
+        {
+            if (BuildCommand(client, out error) is not { } command) return null;
+            lines.Add(command.DisplayText);
+        }
+        return lines;
+    }
+
     [RelayCommand]
-    private void Launch()
+    private void CopyCommandLine(ILaunchItem? item)
+    {
+        if (item is null) return;
+        if (CommandLines(item, out var error) is not { } lines)
+        {
+            SetStatus(error ?? "Can't build the command line.", isError: true);
+            return;
+        }
+        if (!_dialogs.CopyToClipboard(string.Join(Environment.NewLine, lines)))
+        {
+            SetStatus("Couldn't copy to the clipboard: another app is using it. Try again.", isError: true);
+            return;
+        }
+        SetStatus(lines.Count == 1
+            ? $"Copied the command line for '{item.Name}'."
+            : $"Copied the {lines.Count} command lines for '{item.Name}', server first. Clients get the server's port added when launched.");
+    }
+
+    /// <summary>The server's log path: its own <c>-abslog=</c>, else one in the project's Saved/Logs that the tool adds.</summary>
+    private string ServerLogPathFor(LaunchCommand server, bool prepare)
+    {
+        if (ServerLog.FindAbsLog(server.Arguments) is { } own)
+            return Path.IsPathRooted(own) ? own : Path.GetFullPath(Path.Combine(server.WorkingDirectory, own));
+        var logsDir = Path.Combine(SelectedProject!.Directory, "Saved", "Logs");
+        var baseName = $"{SelectedProject.Name}-Server";
+        return prepare ? ServerLog.PrepareLogPath(logsDir, baseName) : Path.Combine(logsDir, baseName + ".log");
+    }
+
+    private static LaunchCommand WithServerLog(LaunchCommand server, string logPath) =>
+        ServerLog.FindAbsLog(server.Arguments) is not null
+            ? server
+            : server with { Arguments = $"{server.Arguments} {ServerLog.AbsLogArgument(logPath)}" };
+
+    [RelayCommand]
+    private async Task LaunchAsync()
     {
         FlushUserState();
-        var command = BuildCommand(out var error);
+        if (SelectedSession is { } session)
+        {
+            await LaunchSessionAsync(session);
+            return;
+        }
+        if (SelectedConfig is not { } config)
+        {
+            SetStatus("Select a configuration.", isError: true);
+            return;
+        }
+        var command = BuildCommand(config.Config, out var error);
         if (command is null)
         {
             SetStatus(error ?? "Can't launch.", isError: true);
@@ -540,14 +723,137 @@ public sealed partial class MainViewModel : ObservableObject
         }
         try
         {
-            Launcher.Start(command);
-            var where = SelectedConfig!.Config.Rule.UsesMap ? SelectedMap?.Name ?? "default map" : SelectedConfig.Config.Rule.Connect;
-            SetStatus($"Launched {SelectedProject!.Name}: {SelectedConfig.Name} ({where}) at {DateTime.Now:HH:mm:ss}.");
+            _processes.Add(Launcher.Start(command), $"{SelectedProject!.Name}: {config.Name}");
+            var where = config.Config.Rule.UsesMap ? SelectedMap?.Name ?? "default map" : config.Config.Rule.Connect;
+            SetStatus($"Launched {SelectedProject.Name}: {config.Name} ({where}) at {DateTime.Now:HH:mm:ss}.");
         }
         catch (Exception ex)
         {
             SetStatus($"Launch failed: {ex.Message}", isError: true);
         }
+    }
+
+    private async Task LaunchSessionAsync(SessionItem session)
+    {
+        var plan = session.Session.Resolve(Configs.Select(c => c.Config).ToList());
+        if (plan.Error is not null)
+        {
+            SetStatus($"Can't launch '{session.Name}': {plan.Error}", isError: true);
+            return;
+        }
+        var serverConfig = plan.Server!;
+        var serverCommand = BuildCommand(serverConfig, out var error);
+        foreach (var client in plan.Clients)
+        {
+            if (serverCommand is null) break;
+            if (BuildCommand(client, out error) is null) serverCommand = null;
+        }
+        if (serverCommand is null)
+        {
+            SetStatus(error ?? "Can't launch.", isError: true);
+            return;
+        }
+
+        var project = SelectedProject!;
+        string logPath;
+        long previousLogLength;
+        Process server;
+        try
+        {
+            // The tool's own log path is cleared first; a log the configuration chose itself may still hold the
+            // previous run's "listening" line, so only what's written after its current end counts.
+            logPath = ServerLogPathFor(serverCommand, prepare: true);
+            previousLogLength = ServerLog.CurrentLength(logPath);
+            server = Launcher.Start(WithServerLog(serverCommand, logPath));
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Launch failed: {ex.Message}", isError: true);
+            return;
+        }
+        _processes.Add(server, $"{project.Name}: {serverConfig.Name}");
+
+        using var cancel = new CancellationTokenSource();
+        _sessionCancel = cancel;
+        IsSessionStarting = true;
+        var started = DateTime.Now;
+        void ShowWaiting() =>
+            SetStatus($"Waiting for {serverConfig.Name} to start listening… {(DateTime.Now - started).TotalSeconds:0} s. " +
+                      $"{plan.Clients.Count} client(s) will follow.");
+        ShowWaiting();
+        var ticker = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        ticker.Tick += (_, _) => ShowWaiting();
+        ticker.Start();
+        try
+        {
+            var (result, port) = await ServerLog.WaitForListeningAsync(logPath, () => HasExited(server), ServerStartTimeout,
+                cancel.Token, startPosition: previousLogLength);
+            ticker.Stop();
+            if (result == ServerWaitResult.Exited)
+            {
+                SetStatus($"{serverConfig.Name} closed before it started listening, so no clients were launched. Its log: {logPath}", isError: true);
+                return;
+            }
+            if (result == ServerWaitResult.TimedOut)
+            {
+                SetStatus($"{serverConfig.Name} didn't start listening within {ServerStartTimeout.TotalMinutes:0} minutes, so no clients were " +
+                          $"launched. It's still running; its log: {logPath}", isError: true);
+                return;
+            }
+
+            for (var i = 0; i < plan.Clients.Count; i++)
+            {
+                if (i > 0) await Task.Delay(ClientStagger, cancel.Token);
+                var client = plan.Clients[i];
+                var command = BuildCommand(SessionPlan.ConnectingTo(client, port), out error)
+                              ?? throw new InvalidOperationException(error);
+                SetStatus($"{serverConfig.Name} is listening on port {port}. Launching client {i + 1} of {plan.Clients.Count}: {client.Name}…");
+                _processes.Add(Launcher.Start(command), $"{project.Name}: {client.Name}");
+            }
+            SetStatus($"Launched {session.Name}: {serverConfig.Name} on port {port} and {plan.Clients.Count} client(s) at {DateTime.Now:HH:mm:ss}.");
+        }
+        catch (OperationCanceledException)
+        {
+            // Stop cancelled it, and reports what it stopped.
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Launching the clients failed: {ex.Message}", isError: true);
+        }
+        finally
+        {
+            ticker.Stop();
+            _sessionCancel = null;
+            IsSessionStarting = false;
+        }
+    }
+
+    private static bool HasExited(Process process)
+    {
+        try { return process.HasExited; }
+        catch (InvalidOperationException) { return true; }   // disposed once it exited
+    }
+
+    // ---- Stop ---------------------------------------------------------------------------------------
+
+    public string StopText => _processes.Count > 0 ? $"Stop ({_processes.Count})" : "Stop";
+
+    public string StopToolTip => _processes.Count == 0
+        ? "Close everything launched from here. Nothing is running."
+        : "Close everything launched from here:\n" + string.Join("\n", _processes.Labels);
+
+    private bool CanStop() => _processes.Count > 0 || IsSessionStarting;
+
+    [RelayCommand(CanExecute = nameof(CanStop))]
+    private async Task StopAsync()
+    {
+        var wasStarting = IsSessionStarting;
+        _sessionCancel?.Cancel();
+        SetStatus("Stopping…");
+        var stopped = await _processes.StopAllAsync(TimeSpan.FromSeconds(5));
+        SetStatus(stopped == 0 && wasStarting
+            ? "Cancelled the session."
+            : $"Stopped {stopped} instance(s){(wasStarting ? " and cancelled the session's remaining clients" : "")}.");
     }
 
     // ---- Helpers ------------------------------------------------------------------------------------

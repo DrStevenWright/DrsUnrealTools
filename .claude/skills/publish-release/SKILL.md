@@ -1,13 +1,12 @@
 ---
 name: publish-release
-description: Publishes a new release of UE Test Tool from this repo, end to end - commit and PR any pending work, merge it, then tag, build, release and install the exe. Use when the user says "Publish <version>", "Release <version>" or asks to make a new release.
+description: Publishes a new release of UE Test Tool from this repo - merges the open PR for the work (the user publishes pending work with /git:publish first), cleans up its branch, then tags, builds, releases and installs the exe. Use when the user says "Publish <version>", "Release <version>" or asks to make a new release.
 ---
 
 # Publish a release
 
-The user says something like **"Publish 0.3.0"**. That request is their go-ahead, for this run only, to commit, push,
-open and merge a PR, push a tag and install the exe, even though they normally commit themselves. It covers nothing
-beyond these steps.
+The user says something like **"Publish 0.3.0"**. That request is their go-ahead, for this run only, to merge the
+work's PR, delete its local branch, push a tag and install the exe. It covers nothing beyond these steps.
 
 ## 0. The version
 
@@ -26,8 +25,13 @@ Check the state: `git status --porcelain`, the current branch, and open PRs
 - **A PR is open for the work** (e.g. the one `/git:publish` just opened):
   1. Wait for its checks: `gh pr checks <number> --watch --fail-fast`. If they fail, stop and report; don't merge.
   2. Merge it with a merge commit, as this repo does: `gh pr merge <number> --merge`.
-  3. Switch to main and update it: `git switch main`, then `git pull --ff-only`. Leave deleting the old local
-     branch to the user's `/git:merged`.
+  3. Switch to main and update it: `git switch main`, then `git pull --ff-only`.
+  4. Delete the merged branch, locally only. First confirm the PR merged with the branch's current tip:
+     `gh pr view <number> --json state,headRefOid` must show `MERGED` and a `headRefOid` equal to
+     `git rev-parse <branch>`. If it does, `git branch -D <branch>` (`-D` because git may not see the merge
+     commit as containing it), then `git remote prune origin`. If not, leave the branch and say why.
+- **Leftover local branches** whose PRs merged earlier: mention them (`git branch --list`), but don't delete them;
+  the user's `/git:merged` handles those.
 - **Other open PRs** that aren't part of this work: mention them, but don't merge them.
 - **Already on a clean main** that matches origin: go straight to step 2.
 

@@ -12,15 +12,27 @@
         Width="980" Height="660" MinWidth="720" MinHeight="480"
         WindowStartupLocation="CenterScreen">
 
+    <Window.InputBindings>
+        <KeyBinding Key="F5" Command="{Binding RefreshCommand}" />
+    </Window.InputBindings>
+
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <local:NotEmptyToVisibilityConverter x:Key="NotEmptyToVisibility" />
         <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
 
+        <!-- The list's last column (✎ and 🗑), as wide as the New button above it, so "Your extra arguments" ends
+             where the New button starts and sits halfway between the Arguments column and that button. -->
+        <GridLength x:Key="ActionsColumnWidth">100</GridLength>
+
         <!-- Right-click menu for project list items. Defined here (not inside the item style) because WPF can't
              wire event handlers declared inside a Setter value. -->
         <ContextMenu x:Key="ProjectContextMenu" x:Shared="False">
             <MenuItem Header="Remove from list" Click="RemoveProject_Click" />
+        </ContextMenu>
+        <ContextMenu x:Key="LaunchItemContextMenu" x:Shared="False">
+            <MenuItem Header="Copy command line" Click="CopyCommandLine_Click"
+                      ToolTip="Copy the full command line (for a session, the server's and each client's) to the clipboard." />
         </ContextMenu>
 
         <Style x:Key="LabelText" TargetType="TextBlock">
@@ -40,7 +52,7 @@
         </Style>
     </Window.Resources>
 
-    <Grid Margin="20,16,20,16">
+    <Grid Margin="20,16,20,16" Grid.IsSharedSizeScope="True">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />   <!-- project -->
             <RowDefinition Height="Auto" />   <!-- engine -->
@@ -49,9 +61,7 @@
             <RowDefinition Height="Auto" />   <!-- configs header -->
             <RowDefinition Height="*" />      <!-- configs -->
             <RowDefinition Height="Auto" />   <!-- config warnings -->
-            <RowDefinition Height="Auto" />   <!-- new config -->
             <RowDefinition Height="Auto" />   <!-- launch bar -->
-            <RowDefinition Height="Auto" />   <!-- command preview -->
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
@@ -85,11 +95,9 @@
                     ToolTip="Add a .uproject file that wasn't found automatically." />
             <Button Content="Folders…" Command="{Binding EditSearchFoldersCommand}" Margin="0,0,8,0" AutomationProperties.Name="Folders"
                     ToolTip="Choose folders to search for projects, e.g. your repos folder." />
-            <Button Command="{Binding RefreshCommand}" AutomationProperties.Name="Refresh" ToolTip="Search again for engines, projects and maps, and re-read the project's config files.">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBlock Text="Refresh" />
-                </StackPanel>
+            <Button Command="{Binding RefreshCommand}" AutomationProperties.Name="Refresh" MinWidth="0"
+                    ToolTip="Refresh (F5): search again for engines, projects and maps, and re-read the project's config files.">
+                <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" />
             </Button>
         </StackPanel>
 
@@ -137,43 +145,88 @@
                    VerticalAlignment="Center" Margin="0,10,0,0" TextWrapping="Wrap" MaxWidth="220" />
 
         <!-- Configurations -->
-        <Grid Grid.Row="4" Grid.ColumnSpan="3" Margin="0,20,0,6" x:Name="ConfigHeader">
+        <Grid Grid.Row="4" Grid.ColumnSpan="3" Margin="0,14,0,6" x:Name="ConfigHeader">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="36" />
                 <ColumnDefinition Width="200" />
+                <ColumnDefinition Width="Auto" SharedSizeGroup="ArgsColumn" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="72" />
+                <ColumnDefinition Width="{StaticResource ActionsColumnWidth}" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="1" Text="Configuration" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="2" Text="Arguments" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="3" Text="Your extra arguments" FontWeight="SemiBold" Margin="8,0,0,0"
+            <TextBlock Grid.Column="1" Text="Configuration" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2" Text="Arguments" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,24,0" />
+            <TextBlock Grid.Column="3" Text="Your extra arguments" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"
                        ToolTip="Added after the configuration's arguments. Saved per configuration, just for you, in the project's Saved folder." />
+            <Button Grid.Column="4" Margin="8,0,0,0" HorizontalContentAlignment="Center" Click="NewMenu_Click" AutomationProperties.Name="New"
+                    ToolTip="Add a configuration or session, or open the project's Config/UETestTool.ini.">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Text="New" />
+                    <TextBlock Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="10" VerticalAlignment="Center" Margin="8,1,0,0" />
+                </StackPanel>
+                <Button.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="New configuration…" Command="{Binding NewConfigCommand}"
+                                  ToolTip="A configuration based on another (the selected one, to start with), with its own arguments." />
+                        <MenuItem Header="New session…" Command="{Binding NewSessionCommand}"
+                                  ToolTip="A server and any mix of clients, launched together." />
+                        <Separator />
+                        <MenuItem Header="Open UETestTool.ini" Command="{Binding OpenConfigFileCommand}"
+                                  ToolTip="Open the project's Config/UETestTool.ini, where configurations and sessions are saved." />
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
         </Grid>
 
-        <ListBox Grid.Row="5" Grid.ColumnSpan="3" ItemsSource="{Binding Configs}" SelectedItem="{Binding SelectedConfig}"
+        <ListBox Grid.Row="5" Grid.ColumnSpan="3" x:Name="ConfigList" ItemsSource="{Binding LaunchItemsView}" SelectedItem="{Binding SelectedItem}"
                  HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                 MouseDoubleClick="Configs_MouseDoubleClick" PreviewGotKeyboardFocus="Configs_PreviewGotKeyboardFocus">
+                 ScrollViewer.CanContentScroll="False" AutomationProperties.Name="Configurations"
+                 MouseDoubleClick="Configs_MouseDoubleClick" PreviewGotKeyboardFocus="Configs_PreviewGotKeyboardFocus"
+                 SelectionChanged="Configs_SelectionChanged">
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                     <Setter Property="Padding" Value="0,2" />
+                    <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                    <Setter Property="ContextMenu" Value="{StaticResource LaunchItemContextMenu}" />
                 </Style>
             </ListBox.ItemContainerStyle>
-            <ListBox.ItemTemplate>
-                <DataTemplate DataType="vm:ConfigItem">
+            <ListBox.GroupStyle>
+                <GroupStyle>
+                    <GroupStyle.HeaderTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,12,0,4">
+                                <DockPanel.Style>
+                                    <Style TargetType="DockPanel">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Name}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DockPanel.Style>
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding Name}" FontWeight="SemiBold" Margin="8,0,10,0"
+                                           ToolTip="Multiplayer sessions: a server, then its clients once the server is listening." />
+                                <Separator VerticalAlignment="Center" Opacity="0.5" />
+                            </DockPanel>
+                        </DataTemplate>
+                    </GroupStyle.HeaderTemplate>
+                </GroupStyle>
+            </ListBox.GroupStyle>
+            <ListBox.Resources>
+                <DataTemplate DataType="{x:Type vm:ConfigItem}">
                     <Grid ToolTip="{Binding RuleDescription}" Background="Transparent">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="36" />
                             <ColumnDefinition Width="200" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="ArgsColumn" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="72" />
+                            <ColumnDefinition Width="{StaticResource ActionsColumnWidth}" />
                         </Grid.ColumnDefinitions>
                         <RadioButton Grid.Column="0" IsHitTestVisible="False" Focusable="False" MinWidth="0" Margin="8,0,0,0"
                                      VerticalAlignment="Center"
                                      IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}, Mode=OneWay}" />
                         <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Column="2" Text="{Binding Args}" VerticalAlignment="Center" Style="{StaticResource DimText}"
+                        <TextBlock Grid.Column="2" Text="{Binding Args}" VerticalAlignment="Center" Margin="0,0,24,0" MaxWidth="420" Style="{StaticResource DimText}"
                                    TextTrimming="CharacterEllipsis" FontFamily="Cascadia Mono, Consolas" FontSize="12" />
                         <TextBox Grid.Column="3" Text="{Binding CustomArgs, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0"
                                  FontFamily="Cascadia Mono, Consolas" FontSize="12" VerticalContentAlignment="Center" />
@@ -190,70 +243,73 @@
                         </StackPanel>
                     </Grid>
                 </DataTemplate>
-            </ListBox.ItemTemplate>
+
+                <DataTemplate DataType="{x:Type vm:SessionItem}">
+                    <Grid ToolTip="{Binding ToolTip}" Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="36" />
+                            <ColumnDefinition Width="200" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="{StaticResource ActionsColumnWidth}" />
+                        </Grid.ColumnDefinitions>
+                        <RadioButton Grid.Column="0" IsHitTestVisible="False" Focusable="False" MinWidth="0" Margin="8,0,0,0"
+                                     VerticalAlignment="Center"
+                                     IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding RowText}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource DimText}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasError}" Value="True">
+                                            <Setter Property="Foreground" Value="#E0A000" />
+                                            <Setter Property="Opacity" Value="1" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Style="{StaticResource IconButton}" Content="&#xE70F;"
+                                    ToolTip="Edit (or copy) this session"
+                                    Command="{Binding DataContext.EditSessionCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                    CommandParameter="{Binding}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE74D;"
+                                    ToolTip="Delete from Config/UETestTool.ini"
+                                    Visibility="{Binding IsProjectDefined, Converter={StaticResource BoolToVisibility}}"
+                                    Command="{Binding DataContext.DeleteSessionCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                    CommandParameter="{Binding}" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.Resources>
         </ListBox>
 
         <TextBlock Grid.Row="6" Grid.ColumnSpan="3" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="#E0A000"
                    Text="{Binding ConfigWarnings}"
                    Visibility="{Binding ConfigWarnings, Converter={StaticResource NotEmptyToVisibility}}" />
 
-        <!-- New / edit configuration -->
-        <Grid Grid.Row="7" Grid.ColumnSpan="3" Margin="0,10,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="200" />
-                <ColumnDefinition Width="170" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <TextBlock Text="New" Style="{StaticResource LabelText}"
-                       ToolTip="Create a configuration from a template, or edit one with its ✎ button. Saved to the project's Config/UETestTool.ini, shared with everyone using the project." />
-            <TextBox Grid.Column="1" Text="{Binding NewConfigName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
-                     ToolTip="Name for the configuration" x:Name="NewNameBox" />
-            <!-- Placeholder text for the name box -->
-            <TextBlock Grid.Column="1" Text="Name" IsHitTestVisible="False" Margin="12,0,0,0" VerticalAlignment="Center">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock" BasedOn="{StaticResource DimText}">
-                        <Setter Property="Visibility" Value="Collapsed" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding Text, ElementName=NewNameBox}" Value="">
-                                <Setter Property="Visibility" Value="Visible" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
-            <ComboBox Grid.Column="2" ItemsSource="{Binding Configs}" SelectedItem="{Binding NewConfigTemplate}" Margin="0,0,8,0"
-                      DisplayMemberPath="Name" ToolTip="Template: the new configuration launches the same way (map, ?listen, connect) and starts with its arguments" />
-            <TextBox Grid.Column="3" Text="{Binding NewConfigArgs, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
-                     FontFamily="Cascadia Mono, Consolas" FontSize="12" VerticalContentAlignment="Center"
-                     ToolTip="Arguments for the new configuration (prefilled from the template)" />
-            <StackPanel Grid.Column="4" Orientation="Horizontal">
-                <Button Content="{Binding SaveConfigButtonText}" Command="{Binding SaveConfigCommand}" MinWidth="64" />
-                <Button Style="{StaticResource IconButton}" Content="&#xE8A7;" Margin="4,0,0,0"
-                        ToolTip="Open Config/UETestTool.ini" Command="{Binding OpenConfigFileCommand}" />
-            </StackPanel>
-            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" Margin="0,4,0,0" Foreground="#E05050" TextWrapping="Wrap"
-                       Text="{Binding NewConfigError}"
-                       Visibility="{Binding NewConfigError, Converter={StaticResource NotEmptyToVisibility}}" />
-        </Grid>
-
         <!-- Status + launch -->
-        <DockPanel Grid.Row="8" Grid.ColumnSpan="3" Margin="0,16,0,0" LastChildFill="True">
+        <DockPanel Grid.Row="7" Grid.ColumnSpan="3" Margin="0,16,0,0" LastChildFill="True">
             <Button DockPanel.Dock="Right" Command="{Binding LaunchCommand}" Padding="22,8" FontSize="15"
-                    AutomationProperties.Name="Launch"
+                    AutomationProperties.Name="Launch" ToolTipService.ShowOnDisabled="True" ToolTipService.ShowDuration="60000"
                     Style="{DynamicResource AccentButtonStyle}" IsDefault="False">
+                <Button.ToolTip>
+                    <ToolTip MaxWidth="900">
+                        <TextBlock Text="{Binding CommandPreview}" TextWrapping="Wrap" FontFamily="Cascadia Mono, Consolas" FontSize="12" />
+                    </ToolTip>
+                </Button.ToolTip>
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,8,0" />
                     <TextBlock Text="Launch" />
                 </StackPanel>
             </Button>
-            <ToggleButton DockPanel.Dock="Right" Content="Show command" IsChecked="{Binding ShowCommand}" Margin="0,0,12,0"
-                          VerticalAlignment="Center" ToolTip="Show the full command line, including the injected project and map" />
+            <Button DockPanel.Dock="Right" Command="{Binding StopCommand}" Padding="14,8" FontSize="15" Margin="0,0,8,0"
+                    AutomationProperties.Name="Stop" ToolTip="{Binding StopToolTip}" ToolTipService.ShowOnDisabled="True">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE71A;" FontFamily="{StaticResource IconFont}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Text="{Binding StopText}" />
+                </StackPanel>
+            </Button>
             <ProgressBar DockPanel.Dock="Left" IsIndeterminate="True" Width="80" Height="4" Margin="0,0,12,0"
                          VerticalAlignment="Center" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
             <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
@@ -270,10 +326,5 @@
                 </TextBlock.Style>
             </TextBlock>
         </DockPanel>
-
-        <TextBox Grid.Row="9" Grid.ColumnSpan="3" Margin="0,10,0,0" IsReadOnly="True" TextWrapping="Wrap"
-                 FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                 Text="{Binding CommandPreview, Mode=OneWay}"
-                 Visibility="{Binding ShowCommand, Converter={StaticResource BoolToVisibility}}" />
     </Grid>
 </Window>
